@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Iniciar Sesión - QR MACHINE</title>
+    <!-- enlace a la hoja de estilos estática -->
+    <link rel="stylesheet" type="text/css"
+          href="{{ url_for('static', filename='estilos.css') }}" />
+  </head>
+  <body>
+    <h1>Iniciar Sesión en QR MACHINE</h1>
+
+    <div class="main-box">
+      <form method="POST">
+        <input type="text" name="nombre" placeholder="Nombre" required />
+        <input type="text" name="apellido" placeholder="Apellido" required />
+        <input type="password" name="password" placeholder="Contraseña" required />
+        <button type="submit">Iniciar Sesión</button>
+      </form>
+
+      {% with messages = get_flashed_messages() %}
+        {% if messages %}
+          <ul>
+            {% for message in messages %}
+              <li>{{ message }}</li>
+            {% endfor %}
+          </ul>
+        {% endif %}
+      {% endwith %}
+    </div>
+  </body>
+</html>

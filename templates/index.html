@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <title>QR MACHINE</title>
+    <!-- enlace a la hoja de estilos estática -->
+    <link
+      rel="stylesheet"
+      type="text/css"
+      href="{{ url_for('static', filename='estilos.css') }}"
+    />
+  </head>
+  <body>
+    <h1>QR MACHINE - Gestión de Archivos</h1>
+
+    <!-- Navegación -->
+    <nav>
+      <a href="{{ url_for('logout') }}">Cerrar Sesión</a>
+      {% if session['role'] == 'admin' %}
+      <a href="{{ url_for('filter', extension='pdf') }}">Filtrar PDF</a>
+      <a href="{{ url_for('filter', extension='doc') }}">Filtrar DOC</a>
+      <a href="{{ url_for('filter', extension='docx') }}">Filtrar DOCX</a>
+      {% endif %}
+    </nav>
+
+    <div class="main-box">
+      <!-- Mostrar QR si se acaba de generar -->
+      {% if qr_filename %}
+      <h2>QR Generado para el Archivo Subido</h2>
+      <p>Escanea este QR para ver el contenido del documento:</p>
+      <img
+        src="{{ url_for('static', filename=qr_filename) }}"
+        alt="Código QR"
+        style="max-width: 200px"
+      />
+      {% endif %}
+
+      <form method="POST" enctype="multipart/form-data">
+        <input type="file" name="file" accept=".pdf,.doc,.docx" required />
+        <button type="submit">Subir Archivo</button>
+      </form>
+
+      <h2>Historial de Archivos</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Nombre</th>
+            <th>Extensión</th>
+            <th>Fecha de Subida</th>
+            {% if session['role'] == 'admin' %}
+            <th>Subido por</th>
+            {% endif %}
+            <th>Acciones</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for fila in historial %}
+          <tr>
+            <td>{{ fila[0] }}</td>
+            <td>{{ fila[1] }}</td>
+            <td>{{ fila[2] }}</td>
+            {% if session['role'] == 'admin' %}
+            <td><strong>{{ fila[4] }}</strong></td>
+            {% endif %}
+            <td>
+              <a
+                href="{{ url_for('static', filename=fila[0] + '.png') }}"
+                download
+                >Descargar QR</a
+              >
+              {% if session['role'] == 'admin' %}
+              <a
+                href="{{ url_for('delete', id_db=fila[3]) }}"
+                class="btn-delete"
+                >Eliminar</a
+              >
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </body>
+</html>

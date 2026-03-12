@@ -1,0 +1,76 @@
+*crear usuario comun*
+INSERT INTO usuarios_comunes (nombre, apellido, password_hash) VALUES (s, s, s);
+
+*solicitar lista de ususarios comunes*
+SELECT * FROM usuarios_comunes;  
+SELECT id, nombre, apellido FROM usuarios_comunes WHERE id = s;  
+SELECT nombre, apellido FROM usuarios_comunes WHERE nombre = s AND apellido = s;
+SELECT COUNT(*) FROM usuarios_comunes;  
+
+*crear usuario admin*
+INSERT INTO usuarios_admin (nombre, apellido, password_hash) VALUES (%s, %s, %s);
+
+*solicitar lista de ususarios admin*
+SELECT * FROM usuarios_admin; 
+SELECT id, nombre, apellido FROM usuarios_admin WHERE id = %s;
+SELECT nombre, apellido FROM usuarios_admin WHERE nombre = %s AND apellido = %s;SELECT COUNT(*) FROM usuarios_admin;  
+
+*subir archivo*
+INSERT INTO archivos (nombre, extension, usuario_comun_id, usuario_admin_id) VALUES (%s, %s, %s, %s);
+
+*lista de archivos subidos*
+SELECT * FROM archivos;  
+SELECT nombre, extension, fecha_subida FROM archivos WHERE id = %s;  
+SELECT * FROM archivos WHERE extension = %s;  
+SELECT * FROM archivos WHERE usuario_comun_id = %s;  
+SELECT * FROM archivos WHERE usuario_admin_id = %s;  
+SELECT COUNT(*) FROM archivos;  
+SELECT COUNT(*) FROM archivos WHERE extension = %s;  
+SELECT * FROM archivos ORDER BY fecha_subida DESC; 
+SELECT * FROM archivos WHERE fecha_subida < %s;  
+
+*borrar archivos*
+DELETE FROM archivos WHERE id = %s;  
+DELETE FROM archivos WHERE nombre = %s; 
+DELETE FROM archivos WHERE extension = %s;  
+DELETE FROM archivos WHERE fecha_subida < %s;  
+
+*ver archivos con el nombre del usuario que lo subió*
+SELECT a.id, a.nombre, a.extension, a.fecha_subida,
+       COALESCE(uc.nombre, ua.nombre) AS subido_por,
+       COALESCE(uc.apellido, ua.apellido) AS apellido_subido_por
+FROM archivos a
+LEFT JOIN usuarios_comunes uc ON a.usuario_comun_id = uc.id
+LEFT JOIN usuarios_admin ua ON a.usuario_admin_id = ua.id
+ORDER BY a.fecha_subida DESC;
+
+*generar tablas*
+CREATE TABLE usuarios_comunes (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    nombre VARCHAR(50) NOT NULL,
+    apellido VARCHAR(50) NOT NULL,
+    password_hash VARCHAR(255) NOT NULL
+);
+
+CREATE TABLE usuarios_admin (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    nombre VARCHAR(50) NOT NULL,
+    apellido VARCHAR(50) NOT NULL,
+    password_hash VARCHAR(255) NOT NULL
+);
+
+CREATE TABLE archivos (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    nombre VARCHAR(255) NOT NULL,
+    extension VARCHAR(10),
+    fecha_subida DATETIME DEFAULT CURRENT_TIMESTAMP,
+    usuario_comun_id INT NULL,
+    usuario_admin_id INT NULL,
+    CONSTRAINT fk_arch_comun FOREIGN KEY (usuario_comun_id) 
+        REFERENCES usuarios_comunes(id) ON DELETE SET NULL,
+    CONSTRAINT fk_arch_admin FOREIGN KEY (usuario_admin_id) 
+        REFERENCES usuarios_admin(id) ON DELETE SET NULL
+);
+
+SET FOREIGN_KEY_CHECKS = 1;
+
