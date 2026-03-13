@@ -268,32 +268,45 @@ def delete(id_db):
 
 @app.route('/download/<filename>')
 def download(filename):
-
     token = request.args.get('token')
 
     # Si no hay token, bloquear
     if not token:
         return "Acceso no autorizado", 403
 
-    # Buscar token del archivo
-    cursor.execute("SELECT token FROM archivos WHERE nombre=%s", (filename,))
-    result = cursor.fetchone()
+    # 1. Crear conexión y cursor con BUFFER (Esto evita el error de tus logs)
+    conn = get_db_connection()
+    cursor = conn.cursor(buffered=True) # El parámetro buffered=True es la clave
 
-    if not result:
-        return "Archivo no encontrado", 404
+    try:
+        # Buscar token del archivo
+        cursor.execute("SELECT token FROM archivos WHERE nombre=%s", (filename,))
+        result = cursor.fetchone()
 
-    stored_token = result[0]
+        if not result:
+            return "Archivo no encontrado en la base de datos", 404
 
-    # Verificar token
-    if token != stored_token:
-        return "Token inválido", 403
+        stored_token = result[0]
 
-    filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        # Verificar token
+        if token != stored_token:
+            return "Token inválido", 403
 
-    if not os.path.exists(filepath):
-        return "Archivo no encontrado", 404
+        # 2. Usar ruta absoluta para evitar FileNotFoundError en Render
+        filepath = os.path.abspath(os.path.join(app.config['UPLOAD_FOLDER'], filename))
 
-    return send_file(filepath, as_attachment=True)
+        if not os.path.exists(filepath):
+            return "El archivo físico no existe en el servidor", 404
+
+        return send_file(filepath, as_attachment=True)
+
+    except Exception as e:
+        print(f"Error: {e}")
+        return "Error interno del servidor", 500
+    finally:
+        # 3. Siempre cerrar cursor y conexión
+        cursor.close()
+        conn.close()
 
 if __name__ == "__main__":
     import os
