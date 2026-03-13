@@ -5,3 +5,5 @@ qrcode
 gunicorn
 PyPDF2
 python-docx
+Pillow
+cryptography
