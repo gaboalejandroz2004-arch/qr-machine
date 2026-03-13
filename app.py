@@ -15,6 +15,13 @@ app.secret_key = 'un‑secreto‑cualquiera'            # necesario para sesione
 app.config['UPLOAD_FOLDER'] = 'uploads'
 app.config['ALLOWED_EXTENSIONS'] = {'pdf', 'doc', 'docx'}
 
+if not os.path.exists(app.config['UPLOAD_FOLDER']):
+    os.makedirs(app.config['UPLOAD_FOLDER'])
+
+# También para la carpeta static por si acaso
+if not os.path.exists('static'):
+    os.makedirs('static')
+
 BASE_URL = os.environ.get("BASE_URL", "http://localhost:5000")
 
 # Para invalidar caché de archivos estáticos (CSS)
