@@ -274,7 +274,7 @@ def download(filename):
 
     return send_file(filepath, as_attachment=True)
 
-if __name__ == '__main__':
-    os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
-    os.makedirs('static', exist_ok=True)
-    app.run(host='0.0.0.0', port=5000, debug=True, threaded=True)
+if __name__ == "__main__":
+    import os
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host='0.0.0.0', port=port)
