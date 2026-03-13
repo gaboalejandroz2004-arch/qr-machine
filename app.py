@@ -170,13 +170,13 @@ def index():
     qr_filename = None  
 
     if request.method == 'POST':
-        file = request.files.get('file') # Usamos .get para evitar errores si viene vacío
+        file = request.files.get('file')
         if file and allowed_file(file.filename):
             filename = secure_filename(file.filename)
             extension = filename.rsplit('.', 1)[1].lower()
             
-            # Usar la ruta absoluta configurada arriba
-            filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+            # --- CAMBIO 1: Forzar ruta absoluta para el archivo subido ---
+            filepath = os.path.abspath(os.path.join(app.config['UPLOAD_FOLDER'], filename))
             file.save(filepath)
             
             token = secrets.token_urlsafe(32)
@@ -187,19 +187,20 @@ def index():
             qr.make(fit=True)
             img = qr.make_image(fill='black', back_color='white')
             
+            # --- CAMBIO 2: Forzar ruta absoluta para la imagen del QR ---
             qr_filename = f"{filename}.png"
-            qr_path = os.path.join(app.root_path, 'static', qr_filename)
+            qr_path = os.path.abspath(os.path.join(app.root_path, 'static', qr_filename))
             img.save(qr_path)
 
-            # Guardado en DB
+            # --- CAMBIO 3: Asegurar el commit a la base de datos ---
             sql = "INSERT INTO archivos (nombre, extension, token, usuario_admin_id, usuario_comun_id) VALUES (%s,%s,%s,%s,%s)"
             if session.get('role') == 'admin':
                 cur.execute(sql, (filename, extension, token, session['user_id'], None))
             else:
                 cur.execute(sql, (filename, extension, token, None, session['user_id']))
-
-            conn.commit()
-
+            
+            conn.commit() # Asegúrate de que esta línea esté presente
+            
     # Obtener historial
     if session.get('role') == 'admin':
         cur.execute("""
