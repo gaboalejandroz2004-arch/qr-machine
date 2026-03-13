@@ -11,18 +11,20 @@ from docx import Document
 
 # Configuración Flask
 app = Flask(__name__, static_folder='static', static_url_path='/static')
-app.secret_key = 'un‑secreto‑cualquiera'            # necesario para sesiones
+app.secret_key = 'un‑secreto‑cualquiera'            # <------ necesario para sesiones
 app.config['UPLOAD_FOLDER'] = 'uploads'
 app.config['ALLOWED_EXTENSIONS'] = {'pdf', 'doc', 'docx'}
 
-if not os.path.exists(app.config['UPLOAD_FOLDER']):
-    os.makedirs(app.config['UPLOAD_FOLDER'])
+UPLOAD_FOLDER = os.path.join(app.root_path, 'uploads')
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
-# También para la carpeta static por si acaso
-if not os.path.exists('static'):
-    os.makedirs('static')
+if not os.path.exists(UPLOAD_FOLDER):
+    os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
-BASE_URL = os.environ.get("BASE_URL", "http://localhost:5000")
+if not os.path.exists(os.path.join(app.root_path, 'static')):
+    os.makedirs(os.path.join(app.root_path, 'static'), exist_ok=True)
+
+BASE_URL = os.environ.get("BASE_URL", "https://qr-machine.onrender.com")
 
 # Para invalidar caché de archivos estáticos (CSS)
 @app.context_processor
@@ -161,41 +163,46 @@ def index():
     if 'user_id' not in session:
         return redirect(url_for('login'))
 
-    qr_filename = None  # Variable para pasar el QR a la plantilla
+    # CREAR CONEXIÓN DENTRO DE LA FUNCIÓN
+    conn = get_db_connection()
+    cur = conn.cursor()
+
+    qr_filename = None  
 
     if request.method == 'POST':
-        file = request.files['file']
+        file = request.files.get('file') # Usamos .get para evitar errores si viene vacío
         if file and allowed_file(file.filename):
             filename = secure_filename(file.filename)
             extension = filename.rsplit('.', 1)[1].lower()
+            
+            # Usar la ruta absoluta configurada arriba
             filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
             file.save(filepath)
+            
             token = secrets.token_urlsafe(32)
 
-            # Generar QR apuntando a la descarga del archivo (para redirigir a lector estándar)
+            # Generar QR
             qr = qrcode.QRCode(version=1, box_size=10, border=5)
-            qr.add_data(f"{BASE_URL}/download/{filename}?token={token}")  # URL de descarga
+            qr.add_data(f"{BASE_URL}/download/{filename}?token={token}")
             qr.make(fit=True)
             img = qr.make_image(fill='black', back_color='white')
+            
             qr_filename = f"{filename}.png"
-            qr_path = os.path.join('static', qr_filename)
+            qr_path = os.path.join(app.root_path, 'static', qr_filename)
             img.save(qr_path)
 
-            # Guardado en DB según el rol
+            # Guardado en DB
             sql = "INSERT INTO archivos (nombre, extension, token, usuario_admin_id, usuario_comun_id) VALUES (%s,%s,%s,%s,%s)"
-
             if session.get('role') == 'admin':
-                cursor.execute(sql, (filename, extension, token, session['user_id'], None))
+                cur.execute(sql, (filename, extension, token, session['user_id'], None))
             else:
-                cursor.execute(sql, (filename, extension, token, None, session['user_id']))
+                cur.execute(sql, (filename, extension, token, None, session['user_id']))
 
-            db.commit()
+            conn.commit()
 
-            # No redirigir, renderizar con el QR visible
-
-    # Historial de columnas (igual que antes)
+    # Obtener historial
     if session.get('role') == 'admin':
-        cursor.execute("""
+        cur.execute("""
             SELECT a.nombre, a.extension, a.fecha_subida, a.id,
                    COALESCE(uc.nombre, ua.nombre) as subido_por
             FROM archivos a
@@ -204,12 +211,17 @@ def index():
             ORDER BY a.fecha_subida DESC
         """)
     else:
-        cursor.execute("""SELECT nombre, extension, fecha_subida, id
+        cur.execute("""SELECT nombre, extension, fecha_subida, id
                           FROM archivos WHERE usuario_comun_id = %s
                           ORDER BY fecha_subida DESC""",
                        (session['user_id'],))
     
-    historial = cursor.fetchall()
+    historial = cur.fetchall()
+    
+    # CERRAR CONEXIÓN AL TERMINAR
+    cur.close()
+    conn.close()
+    
     return render_template("index.html", historial=historial, qr_filename=qr_filename)
 
 @app.route('/filter/<extension>')
