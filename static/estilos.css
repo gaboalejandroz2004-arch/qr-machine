@@ -1,113 +1,182 @@
 :root {
-  --primary-color: #007bff;
-  --background-color: #f4f4f9;
+  /* Paleta de colores profesional */
+  --bg-dark: #121212;         /* Fondo principal */
+  --bg-card: #1e1e1e;         /* Fondo de contenedores/formularios */
+  --accent-green: #2e7d32;    /* Verde oscuro para acciones */
+  --accent-green-hover: #1b5e20;
+  --text-primary: #e0e0e0;    /* Texto claro pero no puro para no cansar */
+  --text-secondary: #a0a0a0;  /* Texto de apoyo */
+  --border-color: #333333;    /* Bordes sutiles */
+  --danger: #8b0000;          /* Rojo oscuro para eliminar */
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
 }
 
 body {
-  font-family: Arial, sans-serif;
-  background-color: var(--background-color);
-  padding: 20px;
-  color: #333;
+  font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  background-color: var(--bg-dark);
+  color: var(--text-primary);
+  line-height: 1.6;
+  padding: 40px 20px;
 }
 
 h1 {
-  color: var(--primary-color);
+  font-size: 1.8rem;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--accent-green);
   text-align: center;
+  margin-bottom: 30px;
+  border-bottom: 1px solid var(--border-color);
+  padding-bottom: 10px;
 }
 
+h2 {
+  font-size: 1.2rem;
+  margin: 20px 0;
+  color: var(--text-secondary);
+}
+
+/* Contenedor principal */
 .main-box {
-  max-width: 450px;
+  max-width: 900px; /* Ampliado para que la tabla respire */
   margin: 0 auto;
 }
 
+/* Ajuste específico para Login (más estrecho) */
 form {
-  background: white;
-  padding: 20px;
-  border-radius: 8px;
-  box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+  background: var(--bg-card);
+  padding: 30px;
+  border-radius: 4px;
+  border: 1px solid var(--border-color);
+  display: flex;
+  flex-direction: column; /* Entradas una debajo de otra */
+  gap: 15px;
+  max-width: 400px;
+  margin: 0 auto 30px auto;
 }
 
+input[type="text"],
+input[type="password"],
 input[type="file"] {
   width: 100%;
-  padding: 10px;
-  border: 1px solid #ccc;
-  border-radius: 6px;
-  margin-bottom: 15px;
+  padding: 12px;
+  background-color: #252525;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  color: white;
+  outline: none;
+}
+
+input:focus {
+  border-color: var(--accent-green);
 }
 
 button {
-  width: 100%;
   padding: 12px;
-  background-color: var(--primary-color);
+  background-color: var(--accent-green);
   color: white;
   border: none;
-  border-radius: 6px;
+  border-radius: 4px;
   cursor: pointer;
-  font-size: 16px;
-  transition: 0.3s;
+  font-weight: bold;
+  font-size: 14px;
+  transition: background 0.3s ease;
 }
 
 button:hover {
-  background-color: #0056b3;
+  background-color: var(--accent-green-hover);
 }
 
-.qr-box {
-  margin-top: 20px;
-  padding: 20px;
-  background: white;
-  border-radius: 8px;
+/* Sección del QR centrada */
+.qr-display {
   text-align: center;
-  box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+  background: var(--bg-card);
+  padding: 20px;
+  border-radius: 4px;
+  margin-bottom: 30px;
+  border: 1px solid var(--accent-green);
 }
 
+.qr-display img {
+  display: block;
+  margin: 15px auto;
+  border: 8px solid white; /* El QR necesita contraste blanco para ser escaneable */
+  border-radius: 4px;
+}
+
+/* Navegación */
 nav {
   text-align: center;
-  margin-bottom: 20px;
+  margin-bottom: 30px;
+  display: flex;
+  justify-content: center;
+  gap: 20px;
 }
 
 nav a {
-  color: var(--primary-color);
+  color: var(--accent-green);
   text-decoration: none;
-  font-weight: bold;
-}
-
-nav a:hover {
-  text-decoration: underline;
-}
-
-table {
-  width: 100%;
-  border-collapse: collapse;
-  background: white;
-  margin-top: 20px;
-  border-radius: 8px;
-  overflow: hidden;
-  box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-}
-
-th, td {
-  padding: 14px;
-  border: 1px solid #ddd;
-}
-
-th {
-  background-color: var(--primary-color);
-  color: white;
-}
-
-tr:hover {
-  background-color: #f1f1f1;
-}
-
-.btn-delete {
-  color: white;
-  background: #dc3545;
-  padding: 8px 12px;
-  border-radius: 5px;
-  text-decoration: none;
+  font-size: 0.9rem;
+  border: 1px solid var(--accent-green);
+  padding: 5px 15px;
+  border-radius: 20px;
   transition: 0.3s;
 }
 
+nav a:hover {
+  background: var(--accent-green);
+  color: white;
+}
+
+/* Tabla de Historial */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--bg-card);
+  margin-top: 20px;
+  font-size: 0.9rem;
+}
+
+th, td {
+  padding: 15px;
+  text-align: left;
+  border-bottom: 1px solid var(--border-color);
+}
+
+th {
+  background-color: #252525;
+  color: var(--accent-green);
+  text-transform: uppercase;
+  font-size: 0.8rem;
+  letter-spacing: 1px;
+}
+
+tr:hover {
+  background-color: #252525;
+}
+
+/* Botones de acción en tabla */
+.btn-delete {
+  color: #ff6b6b;
+  text-decoration: none;
+  font-size: 0.8rem;
+  padding: 5px 10px;
+  border: 1px solid #ff6b6b;
+  border-radius: 4px;
+}
+
 .btn-delete:hover {
-  background: #b02a37;
+  background: var(--danger);
+  color: white;
+}
+
+.btn-download-qr {
+  color: var(--accent-green);
+  text-decoration: none;
+  margin-right: 10px;
 }
