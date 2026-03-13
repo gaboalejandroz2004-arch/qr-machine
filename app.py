@@ -5,6 +5,7 @@ import secrets
 from flask import (Flask, render_template, request, send_file,
                    redirect, url_for, session, flash)
 from werkzeug.utils import secure_filename
+from urllib.parse import quote
 from werkzeug.security import generate_password_hash, check_password_hash
 from PyPDF2 import PdfReader
 from docx import Document
@@ -54,7 +55,6 @@ db = get_db_connection()
 cursor = db.cursor()
 
 # 3. Crear tablas (solo si no existen)
-# Nota: Quitamos la parte de 'CREATE DATABASE' porque en la nube ya te la dan
 cursor.execute("""
     CREATE TABLE IF NOT EXISTS usuarios_comunes (
         id INT AUTO_INCREMENT PRIMARY KEY,
@@ -183,7 +183,8 @@ def index():
 
             # Generar QR
             qr = qrcode.QRCode(version=1, box_size=10, border=5)
-            qr.add_data(f"{BASE_URL}/download/{filename}?token={token}")
+            filename_encoded = quote(filename)
+            qr.add_data(f"{BASE_URL}/download/{filename_encoded}?token={token}")
             qr.make(fit=True)
             img = qr.make_image(fill='black', back_color='white')
             
