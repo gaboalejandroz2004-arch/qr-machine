@@ -101,39 +101,45 @@ def login():
         admin_token = request.form.get('admin_token') 
 
         conn = get_db_connection()
-        # Usamos buffered=True para evitar errores de resultados no leídos en MySQL
         cursor = conn.cursor(dictionary=True, buffered=True)
         
         try:
-            # 1. Buscamos al usuario en la tabla de usuarios comunes
-            cursor.execute("SELECT * FROM usuarios_comunes WHERE nombre = %s", (username,))
-            user = cursor.fetchone()
+            # --- INTENTO 1: Buscar como Admin ---
+            cursor.execute("SELECT * FROM usuarios_admin WHERE nombre = %s", (username,))
+            admin_user = cursor.fetchone()
             
-            # 2. Verificamos si existe y si la contraseña coincide
-            # (Nota: Aquí comparas texto plano según tu código actual)
-            if user and user['password_hash'] == password:
-                session['user_id'] = user['id']
-                session['username'] = user['nombre']
-                
-                # 3. PRIORIDAD: Si tiene el token correcto, entra como admin
+            # ATENCIÓN: Si usas hashes en la BD, cambia la línea de abajo por: 
+            # if admin_user and check_password_hash(admin_user['password_hash'], password):
+            if admin_user and admin_user['password_hash'] == password:
                 if admin_token == "GABRIEL_2026":
+                    session['user_id'] = admin_user['id']
+                    session['username'] = admin_user['nombre']
                     session['role'] = 'admin'
                     return redirect(url_for('admin_dashboard'))
-                
-                # Si no tiene token, entra como usuario normal
+                else:
+                    flash("Falta el token de seguridad para administradores")
+                    return redirect(url_for('login'))
+
+            # --- INTENTO 2: Buscar como Usuario Común ---
+            cursor.execute("SELECT * FROM usuarios_comunes WHERE nombre = %s", (username,))
+            normal_user = cursor.fetchone()
+            
+            # Igual aquí, si usas hashes, usa check_password_hash
+            if normal_user and normal_user['password_hash'] == password:
+                session['user_id'] = normal_user['id']
+                session['username'] = normal_user['nombre']
                 session['role'] = 'user'
                 return redirect(url_for('index'))
             
-            else:
-                flash("Nombre de usuario o contraseña incorrectos")
-                return redirect(url_for('login'))
+            # Si no se encontró en ningún lado o la clave está mal
+            flash("Nombre de usuario o contraseña incorrectos")
+            return redirect(url_for('login'))
                 
         except Exception as e:
             print(f"Error en login: {e}")
             flash("Error interno del servidor")
             return redirect(url_for('login'))
         finally:
-            # CRÍTICO: Siempre cerrar cursor y conexión para evitar el error de tus logs
             cursor.close()
             conn.close()
         
@@ -141,8 +147,7 @@ def login():
 
 @app.route('/upload', methods=['POST'])
 def upload_file():
-    # Aquí va tu lógica actual de guardar archivo y generar QR
-    #
+    # lógica actual de guardar archivo y generar QR
     return "QR Generado y archivo subido con éxito"
 
 @app.route('/admin/dashboard')
@@ -153,14 +158,15 @@ def admin_dashboard():
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True, buffered=True)
     
-    # Ver archivos subidos (Lista para eliminar)
+    # Ver todos los archivos
     cursor.execute("SELECT * FROM archivos")
     archivos = cursor.fetchall()
     
-    # Ver usuarios que han iniciado sesión (Log de accesos)
-    cursor.execute("SELECT username, last_login FROM usuarios")
+    # CORRECCIÓN: Ver usuarios de la tabla correcta (usuarios_comunes)
+    cursor.execute("SELECT nombre, apellido FROM usuarios_comunes")
     usuarios = cursor.fetchall()
     
+    cursor.close()
     conn.close()
     return render_template('admin.html', archivos=archivos, usuarios=usuarios)
 
