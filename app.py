@@ -123,12 +123,6 @@ def login():
         
     return render_template('login.html')
 
-@app.route('/')
-def index():
-    if 'user_id' not in session:
-        return redirect(url_for('login'))
-        return render_template('index.html') # Solo contiene el formulario de subida
-
 @app.route('/upload', methods=['POST'])
 def upload_file():
     # Aquí va tu lógica actual de guardar archivo y generar QR
@@ -163,21 +157,20 @@ def delete_file(file_id):
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
 
-    # 1. Obtener el nombre del archivo antes de borrar el registro
     cursor.execute("SELECT nombre FROM archivos WHERE id = %s", (file_id,))
     archivo = cursor.fetchone()
 
     if archivo:
         nombre_archivo = archivo['nombre']
-        
-        # 2. Borrar de la base de datos
         cursor.execute("DELETE FROM archivos WHERE id = %s", (file_id,))
         conn.commit()
 
-        # 3. Intentar borrar el archivo físico
-        ruta_archivo = os.path.join(app.config['UPLOAD_FOLDER'], nombre_archivo)
-        if os.path.exists(ruta_archivo):
-            os.remove(ruta_archivo)
+        # Borrar archivos físicos
+        try:
+            os.remove(os.path.join(app.config['UPLOAD_FOLDER'], nombre_archivo))
+            os.remove(os.path.join(app.root_path, 'static', f"{nombre_archivo}.png"))
+        except:
+            pass
 
     cursor.close()
     conn.close()
@@ -272,30 +265,6 @@ def filter_by_extension(extension):
                        (extension, session['user_id']))
     filtered = cursor.fetchall()
     return render_template("index.html", historial=filtered)
-
-@app.route('/delete/<int:id_db>')
-def delete(id_db):
-    if 'user_id' not in session or session.get('role') != 'admin':
-        return redirect(url_for('login'))
-    
-    # Busca el nombre del archivo antes de borrar el registro
-    cursor.execute("SELECT nombre FROM archivos WHERE id = %s", (id_db,))
-    archivo = cursor.fetchone()
-    
-    if archivo:
-        nombre_fichero = archivo[0]
-        # Borrar el registro de la DB
-        cursor.execute("DELETE FROM archivos WHERE id = %s", (id_db,))
-        db.commit()
-        
-        # Borrar el archivo físico y su QR
-        try:
-            os.remove(os.path.join(app.config['UPLOAD_FOLDER'], nombre_fichero))
-            os.remove(os.path.join('static', f"{nombre_fichero}.png"))
-        except OSError:
-            pass 
-
-    return redirect(url_for('index'))
 
 @app.route('/download/<filename>')
 def download(filename):
