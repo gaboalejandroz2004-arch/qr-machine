@@ -57,62 +57,38 @@ def get_db_connection():
 
 def create_test_users():
     """Crear usuarios de prueba si no existen"""
-    try:
-        conn = get_db_connection()
-        if not conn:
-            print("No se pudo conectar a la base de datos para crear usuarios de prueba")
-            return
-            
-        cursor = conn.cursor()
+    conn = get_db_connection()
+    if not conn:
+        print("No se pudo conectar a la base de datos para crear usuarios de prueba")
+        return
         
-        try:
-            # Verificar si las tablas existen antes de insertar
-            cursor.execute("SHOW TABLES LIKE 'usuarios_admin'")
-            if not cursor.fetchone():
-                print("Tabla usuarios_admin no existe, saltando creación de usuarios")
-                return
-                
-            cursor.execute("SHOW TABLES LIKE 'usuarios_comunes'")
-            if not cursor.fetchone():
-                print("Tabla usuarios_comunes no existe, saltando creación de usuarios")
-                return
-            
-            # Verificar si ya existen usuarios admin
-            cursor.execute("SELECT COUNT(*) FROM usuarios_admin")
-            admin_count = cursor.fetchone()[0]
-            
-            if admin_count == 0:
-                # Crear usuario admin de prueba
-                admin_password_hash = generate_password_hash("admin123")
-                cursor.execute("""
-                    INSERT INTO usuarios_admin (nombre, apellido, password_hash) 
-                    VALUES (%s, %s, %s)
-                """, ("admin", "test", admin_password_hash))
-                print("Usuario admin creado: usuario='admin', contraseña='admin123', token='GABRIEL_2026'")
-            
-            # Verificar si ya existen usuarios comunes
-            cursor.execute("SELECT COUNT(*) FROM usuarios_comunes")
-            user_count = cursor.fetchone()[0]
-            
-            if user_count == 0:
-                # Crear usuario común de prueba
-                user_password_hash = generate_password_hash("user123")
-                cursor.execute("""
-                    INSERT INTO usuarios_comunes (nombre, apellido, password_hash) 
-                    VALUES (%s, %s, %s)
-                """, ("user", "test", user_password_hash))
-                print("Usuario común creado: usuario='user', contraseña='user123'")
-            
-            conn.commit()
-            
-        except Exception as e:
-            print(f"Error creando usuarios de prueba: {e}")
-        finally:
-            cursor.close()
-            conn.close()
-            
+    cursor = conn.cursor()
+    
+    try:
+        # Crear usuario admin de prueba
+        admin_password_hash = generate_password_hash("admin123")
+        cursor.execute("""
+            INSERT IGNORE INTO usuarios_admin (nombre, apellido, password_hash) 
+            VALUES (%s, %s, %s)
+        """, ("admin", "test", admin_password_hash))
+        
+        # Crear usuario común de prueba
+        user_password_hash = generate_password_hash("user123")
+        cursor.execute("""
+            INSERT IGNORE INTO usuarios_comunes (nombre, apellido, password_hash) 
+            VALUES (%s, %s, %s)
+        """, ("user", "test", user_password_hash))
+        
+        conn.commit()
+        print("Usuarios de prueba creados:")
+        print("Admin: usuario='admin', contraseña='admin123', token='GABRIEL_2026'")
+        print("Usuario: usuario='user', contraseña='user123'")
+        
     except Exception as e:
-        print(f"Error general en create_test_users: {e}")
+        print(f"Error creando usuarios de prueba: {e}")
+    finally:
+        cursor.close()
+        conn.close()
 
 
 # 2. Inicializar conexión y tablas
@@ -286,19 +262,6 @@ def logout():
     session.clear()
     return redirect(url_for('login'))
 
-@app.route('/health')
-def health_check():
-    """Health check endpoint para Render/Railway"""
-    try:
-        conn = get_db_connection()
-        if conn:
-            conn.close()
-            return {"status": "healthy", "database": "connected"}, 200
-        else:
-            return {"status": "unhealthy", "database": "disconnected"}, 503
-    except Exception as e:
-        return {"status": "unhealthy", "error": str(e)}, 503
-
 # 4. Rutas principales
 @app.route('/', methods=['GET', 'POST'])
 def index():
@@ -427,11 +390,9 @@ def download(filename):
         conn.close()
 
 if __name__ == "__main__":
-    # Solo crear usuarios de prueba en desarrollo local
-    if os.getenv("ENVIRONMENT", "development") == "development":
-        create_test_users()
+    # Crear usuarios de prueba al iniciar la aplicación
+    create_test_users()
     
     import os
     port = int(os.environ.get("PORT", 10000))
-    debug_mode = os.getenv("ENVIRONMENT", "development") == "development"
-    app.run(host='0.0.0.0', port=port, debug=debug_mode)
+    app.run(host='0.0.0.0', port=port)
