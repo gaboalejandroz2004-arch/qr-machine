@@ -101,25 +101,41 @@ def login():
         admin_token = request.form.get('admin_token') 
 
         conn = get_db_connection()
+        # Usamos buffered=True para evitar errores de resultados no leídos en MySQL
         cursor = conn.cursor(dictionary=True, buffered=True)
         
-        # IMPORTANTE: Usamos la tabla 'usuarios_comunes' que creaste al inicio
-        cursor.execute("SELECT * FROM usuarios_comunes WHERE nombre = %s AND password_hash = %s", (username, password))
-        user = cursor.fetchone()
-        
-        if user and user['password_hash'] == password: 
-            session['user_id'] = user['id']
+        try:
+            # 1. Buscamos al usuario en la tabla de usuarios comunes
+            cursor.execute("SELECT * FROM usuarios_comunes WHERE nombre = %s", (username,))
+            user = cursor.fetchone()
             
-            # Si el token es correcto, le damos rango de admin
-            if admin_token == "GABRIEL_2026":
-                session['role'] = 'admin'
-                return redirect(url_for('admin_dashboard'))
-            else:
+            # 2. Verificamos si existe y si la contraseña coincide
+            # (Nota: Aquí comparas texto plano según tu código actual)
+            if user and user['password_hash'] == password:
+                session['user_id'] = user['id']
+                session['username'] = user['nombre']
+                
+                # 3. PRIORIDAD: Si tiene el token correcto, entra como admin
+                if admin_token == "GABRIEL_2026":
+                    session['role'] = 'admin'
+                    return redirect(url_for('admin_dashboard'))
+                
+                # Si no tiene token, entra como usuario normal
                 session['role'] = 'user'
                 return redirect(url_for('index'))
-        
-        flash("Credenciales incorrectas")
-        return redirect(url_for('login'))
+            
+            else:
+                flash("Nombre de usuario o contraseña incorrectos")
+                return redirect(url_for('login'))
+                
+        except Exception as e:
+            print(f"Error en login: {e}")
+            flash("Error interno del servidor")
+            return redirect(url_for('login'))
+        finally:
+            # CRÍTICO: Siempre cerrar cursor y conexión para evitar el error de tus logs
+            cursor.close()
+            conn.close()
         
     return render_template('login.html')
 
