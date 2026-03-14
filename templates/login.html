@@ -11,12 +11,16 @@
     <h1>Iniciar Sesión en QR MACHINE</h1>
 
     <div class="main-box">
-      <form method="POST">
-        <input type="text" name="nombre" placeholder="Nombre" required />
-        <input type="text" name="apellido" placeholder="Apellido" required />
-        <input type="password" name="password" placeholder="Contraseña" required />
-        <button type="submit">Iniciar Sesión</button>
-      </form>
+  <form method="POST">
+    <input type="text" name="username" placeholder="Nombre de Usuario" required />
+    
+    <input type="password" name="password" placeholder="Contraseña" required />
+    
+    <input type="text" name="admin_token" placeholder="Token de Admin (Opcional)" />
+    
+    <button type="submit">Iniciar Sesión</button>
+  </form>
+</div>
 
       {% with messages = get_flashed_messages() %}
         {% if messages %}

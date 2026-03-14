@@ -86,6 +86,7 @@ cursor.execute("""
         FOREIGN KEY (usuario_admin_id) REFERENCES usuarios_admin(id) ON DELETE SET NULL
     )
 """)
+
 db.commit()
 
 def allowed_file(filename):
@@ -97,34 +98,36 @@ def login():
     if request.method == 'POST':
         username = request.form.get('username')
         password = request.form.get('password')
-        # Dato ESPECIFICO (ejemplo: un código de seguridad extra o un prefijo)
         admin_token = request.form.get('admin_token') 
 
         conn = get_db_connection()
-        cursor = conn.cursor(dictionary=True)
-        cursor.execute("SELECT * FROM usuarios WHERE username = %s AND password = %s", (username, password))
+        cursor = conn.cursor(dictionary=True, buffered=True)
+        
+        # IMPORTANTE: Usamos la tabla 'usuarios_comunes' que creaste al inicio
+        cursor.execute("SELECT * FROM usuarios_comunes WHERE nombre = %s AND password_hash = %s", (username, password))
         user = cursor.fetchone()
         
-        if user:
+        if user and user['password_hash'] == password: 
             session['user_id'] = user['id']
-            session['username'] = user['username']
             
-            # Validación de Administrador con el dato específico
-            if admin_token == "GABRIEL_2026": # Tu dato específico
+            # Si el token es correcto, le damos rango de admin
+            if admin_token == "GABRIEL_2026":
                 session['role'] = 'admin'
                 return redirect(url_for('admin_dashboard'))
             else:
                 session['role'] = 'user'
                 return redirect(url_for('index'))
         
-        return "Credenciales incorrectas", 401
+        flash("Credenciales incorrectas")
+        return redirect(url_for('login'))
+        
     return render_template('login.html')
 
 @app.route('/')
 def index():
     if 'user_id' not in session:
         return redirect(url_for('login'))
-    return render_template('index.html') # Solo contiene el formulario de subida
+        return render_template('index.html') # Solo contiene el formulario de subida
 
 @app.route('/upload', methods=['POST'])
 def upload_file():
@@ -152,14 +155,6 @@ def admin_dashboard():
     return render_template('admin.html', archivos=archivos, usuarios=usuarios)
 
 # Opcion de borrado de archivos (modo administrador)
-@app.route('/admin/delete/<int:file_id>')
-def delete_file(file_id):
-    if session.get('role') != 'admin': return "Acceso denegado", 403
-    
-    # Lógica para borrar de la carpeta uploads y de la base de datos
-    #
-    return redirect(url_for('admin_dashboard'))
-
 @app.route('/admin/delete/<int:file_id>')
 def delete_file(file_id):
     if session.get('role') != 'admin':
@@ -242,7 +237,7 @@ def index():
     if session.get('role') == 'admin':
         cur.execute("""
             SELECT a.nombre, a.extension, a.fecha_subida, a.id,
-                   COALESCE(uc.nombre, ua.nombre) as subido_por
+                COALESCE(uc.nombre, ua.nombre) as subido_por
             FROM archivos a
             LEFT JOIN usuarios_comunes uc ON a.usuario_comun_id = uc.id
             LEFT JOIN usuarios_admin ua ON a.usuario_admin_id = ua.id
