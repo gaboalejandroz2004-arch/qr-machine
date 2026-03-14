@@ -1,0 +1,37 @@
+services:
+  - type: web
+    name: qr-machine
+    env: python
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "gunicorn app:app"
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: MYSQLHOST
+        fromDatabase:
+          name: qr-machine-db
+          property: host
+      - key: MYSQLUSER
+        fromDatabase:
+          name: qr-machine-db
+          property: user
+      - key: MYSQLPASSWORD
+        fromDatabase:
+          name: qr-machine-db
+          property: password
+      - key: MYSQLDATABASE
+        fromDatabase:
+          name: qr-machine-db
+          property: database
+      - key: MYSQLPORT
+        fromDatabase:
+          name: qr-machine-db
+          property: port
+
+databases:
+  - name: qr-machine-db
+    databaseName: qr_machine
+    user: qr_user
+    plan: free
