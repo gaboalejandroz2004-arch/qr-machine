@@ -12,7 +12,7 @@ from docx import Document
 
 # Configuración Flask
 app = Flask(__name__, static_folder='static', static_url_path='/static')
-app.secret_key = 'un‑secreto‑cualquiera'            # <------ necesario para sesiones
+app.secret_key = 'un-secreto-cualquiera-2026'            # <------ necesario para sesiones
 app.config['UPLOAD_FOLDER'] = 'uploads'
 app.config['ALLOWED_EXTENSIONS'] = {'pdf', 'doc', 'docx'}
 
@@ -42,13 +42,54 @@ def _dated_url_for(endpoint, **values):
     return url_for(endpoint, **values)
 
 def get_db_connection():
-    return mysql.connector.connect(
-        host=os.getenv("MYSQLHOST", "localhost"),
-        user=os.getenv("MYSQLUSER", "root"),
-        password=os.getenv("MYSQLPASSWORD", "29012004"),
-        database=os.getenv("MYSQLDATABASE", "qr_machine"),
-        port=int(os.getenv("MYSQLPORT", 3306))
-    )
+    try:
+        return mysql.connector.connect(
+            host=os.getenv("MYSQLHOST", "localhost"),
+            user=os.getenv("MYSQLUSER", "root"),
+            password=os.getenv("MYSQLPASSWORD", "29012004"),
+            database=os.getenv("MYSQLDATABASE", "qr_machine"),
+            port=int(os.getenv("MYSQLPORT", 3306))
+        )
+    except mysql.connector.Error as e:
+        print(f"Error de conexión a la base de datos: {e}")
+        return None
+
+
+def create_test_users():
+    """Crear usuarios de prueba si no existen"""
+    conn = get_db_connection()
+    if not conn:
+        print("No se pudo conectar a la base de datos para crear usuarios de prueba")
+        return
+        
+    cursor = conn.cursor()
+    
+    try:
+        # Crear usuario admin de prueba
+        admin_password_hash = generate_password_hash("admin123")
+        cursor.execute("""
+            INSERT IGNORE INTO usuarios_admin (nombre, apellido, password_hash) 
+            VALUES (%s, %s, %s)
+        """, ("admin", "test", admin_password_hash))
+        
+        # Crear usuario común de prueba
+        user_password_hash = generate_password_hash("user123")
+        cursor.execute("""
+            INSERT IGNORE INTO usuarios_comunes (nombre, apellido, password_hash) 
+            VALUES (%s, %s, %s)
+        """, ("user", "test", user_password_hash))
+        
+        conn.commit()
+        print("Usuarios de prueba creados:")
+        print("Admin: usuario='admin', contraseña='admin123', token='GABRIEL_2026'")
+        print("Usuario: usuario='user', contraseña='user123'")
+        
+    except Exception as e:
+        print(f"Error creando usuarios de prueba: {e}")
+    finally:
+        cursor.close()
+        conn.close()
+
 
 # 2. Inicializar conexión y tablas
 db = get_db_connection()
@@ -100,7 +141,16 @@ def login():
         password = request.form.get('password')
         admin_token = request.form.get('admin_token') 
 
+        # Validar que se proporcionen username y password
+        if not username or not password:
+            flash("Por favor, ingrese nombre de usuario y contraseña")
+            return redirect(url_for('login'))
+
         conn = get_db_connection()
+        if not conn:
+            flash("Error de conexión a la base de datos")
+            return redirect(url_for('login'))
+            
         cursor = conn.cursor(dictionary=True, buffered=True)
         
         try:
@@ -108,31 +158,40 @@ def login():
             cursor.execute("SELECT * FROM usuarios_admin WHERE nombre = %s", (username,))
             admin_user = cursor.fetchone()
             
-            # ATENCIÓN: Si usas hashes en la BD, cambia la línea de abajo por: 
-            # if admin_user and check_password_hash(admin_user['password_hash'], password):
-            if admin_user and admin_user['password_hash'] == password:
-                if admin_token == "GABRIEL_2026":
-                    session['user_id'] = admin_user['id']
-                    session['username'] = admin_user['nombre']
-                    session['role'] = 'admin'
-                    return redirect(url_for('admin_dashboard'))
+            if admin_user:
+                # Verificar contraseña (asumiendo que está hasheada)
+                if check_password_hash(admin_user['password_hash'], password):
+                    if admin_token == "GABRIEL_2026":
+                        session['user_id'] = admin_user['id']
+                        session['username'] = admin_user['nombre']
+                        session['role'] = 'admin'
+                        flash("Bienvenido, administrador!")
+                        return redirect(url_for('admin_dashboard'))
+                    else:
+                        flash("Falta el token de seguridad para administradores")
+                        return redirect(url_for('login'))
                 else:
-                    flash("Falta el token de seguridad para administradores")
+                    flash("Contraseña incorrecta")
                     return redirect(url_for('login'))
 
             # --- INTENTO 2: Buscar como Usuario Común ---
             cursor.execute("SELECT * FROM usuarios_comunes WHERE nombre = %s", (username,))
             normal_user = cursor.fetchone()
             
-            # Igual aquí, si usas hashes, usa check_password_hash
-            if normal_user and normal_user['password_hash'] == password:
-                session['user_id'] = normal_user['id']
-                session['username'] = normal_user['nombre']
-                session['role'] = 'user'
-                return redirect(url_for('index'))
+            if normal_user:
+                # Verificar contraseña (asumiendo que está hasheada)
+                if check_password_hash(normal_user['password_hash'], password):
+                    session['user_id'] = normal_user['id']
+                    session['username'] = normal_user['nombre']
+                    session['role'] = 'user'
+                    flash("Bienvenido!")
+                    return redirect(url_for('index'))
+                else:
+                    flash("Contraseña incorrecta")
+                    return redirect(url_for('login'))
             
-            # Si no se encontró en ningún lado o la clave está mal
-            flash("Nombre de usuario o contraseña incorrectos")
+            # Si no se encontró el usuario en ninguna tabla
+            flash("Usuario no encontrado")
             return redirect(url_for('login'))
                 
         except Exception as e:
@@ -331,6 +390,9 @@ def download(filename):
         conn.close()
 
 if __name__ == "__main__":
+    # Crear usuarios de prueba al iniciar la aplicación
+    create_test_users()
+    
     import os
     port = int(os.environ.get("PORT", 10000))
     app.run(host='0.0.0.0', port=port)
