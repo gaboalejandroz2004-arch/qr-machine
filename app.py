@@ -95,62 +95,98 @@ def allowed_file(filename):
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
-        nombre = request.form['nombre'].strip()
-        apellido = request.form['apellido'].strip()
-        password = request.form['password']
-        full_name = f"{nombre} {apellido}".lower()
+        username = request.form.get('username')
+        password = request.form.get('password')
+        # Dato ESPECIFICO (ejemplo: un código de seguridad extra o un prefijo)
+        admin_token = request.form.get('admin_token') 
 
-        # usuario administrador fijo
-        if full_name == 'gabriel administrador' and password == 'gabo2004':
-            cursor.execute("SELECT id FROM usuarios_admin WHERE nombre=%s AND apellido=%s",
-                           (nombre, apellido))
-            admin = cursor.fetchone()
-            if not admin:
-                hash_pw = generate_password_hash(password)
-                cursor.execute("""INSERT INTO usuarios_admin 
-                                  (nombre, apellido, password_hash)
-                                  VALUES (%s, %s, %s)""",
-                               (nombre, apellido, hash_pw))
-                db.commit()
-                admin_id = cursor.lastrowid
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("SELECT * FROM usuarios WHERE username = %s AND password = %s", (username, password))
+        user = cursor.fetchone()
+        
+        if user:
+            session['user_id'] = user['id']
+            session['username'] = user['username']
+            
+            # Validación de Administrador con el dato específico
+            if admin_token == "GABRIEL_2026": # Tu dato específico
+                session['role'] = 'admin'
+                return redirect(url_for('admin_dashboard'))
             else:
-                admin_id = admin[0]
-            session['user_id'] = admin_id
-            session['role'] = 'admin'
-            session['nombre'] = nombre
-            session['apellido'] = apellido
-            return redirect(url_for('index'))
-
-        # usuario común: consulta o registro
-        cursor.execute("""SELECT id, password_hash
-                          FROM usuarios_comunes
-                          WHERE nombre=%s AND apellido=%s""",
-                       (nombre, apellido))
-        usuario = cursor.fetchone()
-        if usuario:
-            uid, pw_hash = usuario
-            if check_password_hash(pw_hash, password):
-                session['user_id'] = uid
                 session['role'] = 'user'
-                session['nombre'] = nombre
-                session['apellido'] = apellido
                 return redirect(url_for('index'))
-            else:
-                flash('Contraseña incorrecta')
-        else:
-            # registro automático
-            hash_pw = generate_password_hash(password)
-            cursor.execute("""INSERT INTO usuarios_comunes
-                              (nombre, apellido, password_hash)
-                              VALUES (%s, %s, %s)""",
-                           (nombre, apellido, hash_pw))
-            db.commit()
-            session['user_id'] = cursor.lastrowid
-            session['role'] = 'user'
-            session['nombre'] = nombre
-            session['apellido'] = apellido
-            return redirect(url_for('index'))
+        
+        return "Credenciales incorrectas", 401
     return render_template('login.html')
+
+@app.route('/')
+def index():
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+    return render_template('index.html') # Solo contiene el formulario de subida
+
+@app.route('/upload', methods=['POST'])
+def upload_file():
+    # Aquí va tu lógica actual de guardar archivo y generar QR
+    #
+    return "QR Generado y archivo subido con éxito"
+
+@app.route('/admin/dashboard')
+def admin_dashboard():
+    if session.get('role') != 'admin':
+        return "Acceso denegado", 403
+    
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True, buffered=True)
+    
+    # Ver archivos subidos (Lista para eliminar)
+    cursor.execute("SELECT * FROM archivos")
+    archivos = cursor.fetchall()
+    
+    # Ver usuarios que han iniciado sesión (Log de accesos)
+    cursor.execute("SELECT username, last_login FROM usuarios")
+    usuarios = cursor.fetchall()
+    
+    conn.close()
+    return render_template('admin.html', archivos=archivos, usuarios=usuarios)
+
+# Opcion de borrado de archivos (modo administrador)
+@app.route('/admin/delete/<int:file_id>')
+def delete_file(file_id):
+    if session.get('role') != 'admin': return "Acceso denegado", 403
+    
+    # Lógica para borrar de la carpeta uploads y de la base de datos
+    #
+    return redirect(url_for('admin_dashboard'))
+
+@app.route('/admin/delete/<int:file_id>')
+def delete_file(file_id):
+    if session.get('role') != 'admin':
+        return "Acceso denegado", 403
+
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+
+    # 1. Obtener el nombre del archivo antes de borrar el registro
+    cursor.execute("SELECT nombre FROM archivos WHERE id = %s", (file_id,))
+    archivo = cursor.fetchone()
+
+    if archivo:
+        nombre_archivo = archivo['nombre']
+        
+        # 2. Borrar de la base de datos
+        cursor.execute("DELETE FROM archivos WHERE id = %s", (file_id,))
+        conn.commit()
+
+        # 3. Intentar borrar el archivo físico
+        ruta_archivo = os.path.join(app.config['UPLOAD_FOLDER'], nombre_archivo)
+        if os.path.exists(ruta_archivo):
+            os.remove(ruta_archivo)
+
+    cursor.close()
+    conn.close()
+    return redirect(url_for('admin_dashboard'))
 
 @app.route('/logout')
 def logout():

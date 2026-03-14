@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Panel de Administración - QR Machine</title>
+    <link
+      rel="stylesheet"
+      href="{{ url_for('static', filename='estilos.css') }}"
+    />
+  </head>
+  <body>
+    <div class="container">
+      <h1>Panel de Control (Admin)</h1>
+      <a href="{{ url_for('index') }}" class="btn">Volver a Subir Archivos</a>
+      <a href="{{ url_for('logout') }}" class="btn-danger">Cerrar Sesión</a>
+
+      <hr />
+
+      <h3>Usuarios que han iniciado sesión</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Usuario</th>
+            <th>Última Conexión</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for usuario in usuarios %}
+          <tr>
+            <td>{{ usuario.username }}</td>
+            <td>{{ usuario.last_login }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+
+      <hr />
+
+      <h3>Gestión de Archivos Subidos</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Nombre del Archivo</th>
+            <th>Token</th>
+            <th>Acciones</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for archivo in archivos %}
+          <tr>
+            <td>{{ archivo.nombre }}</td>
+            <td><code>{{ archivo.token[:10] }}...</code></td>
+            <td>
+              <a
+                href="{{ url_for('delete_file', file_id=archivo.id) }}"
+                onclick="
+                  return confirm('¿Estás seguro de eliminar este archivo?');
+                "
+                class="btn-delete"
+                >Eliminar</a
+              >
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </body>
+</html>
