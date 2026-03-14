@@ -48,7 +48,7 @@ def get_db_connection():
             user=os.getenv("MYSQLUSER", "root"),
             password=os.getenv("MYSQLPASSWORD", "29012004"),
             database=os.getenv("MYSQLDATABASE", "qr_machine"),
-            port=int(os.getenv("MYSQLPORT", 3306))
+            port=int(os.getenv("MYSQLPORT", 52525))
         )
     except mysql.connector.Error as e:
         print(f"Error de conexión a la base de datos: {e}")
