@@ -180,3 +180,12 @@ tr:hover {
   text-decoration: none;
   margin-right: 10px;
 }
+
+select {
+width:100%;
+padding:12px;
+background-color:#252525;
+border:1px solid #333;
+border-radius:4px;
+color:white;
+}

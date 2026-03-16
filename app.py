@@ -138,70 +138,22 @@ def allowed_file(filename):
 def login():
     if request.method == 'POST':
         username = request.form.get('username')
-        password = request.form.get('password')
-        admin_token = request.form.get('admin_token') 
+        role = request.form.get('role')
 
-        # Validar que se proporcionen username y password
-        if not username or not password:
-            flash("Por favor, ingrese nombre de usuario y contraseña")
+        if not username:
+            flash("Ingrese un nombre de usuario")
             return redirect(url_for('login'))
 
-        conn = get_db_connection()
-        if not conn:
-            flash("Error de conexión a la base de datos")
-            return redirect(url_for('login'))
-            
-        cursor = conn.cursor(dictionary=True, buffered=True)
-        
-        try:
-            # --- INTENTO 1: Buscar como Admin ---
-            cursor.execute("SELECT * FROM usuarios_admin WHERE nombre = %s", (username,))
-            admin_user = cursor.fetchone()
-            
-            if admin_user:
-                # Verificar contraseña (asumiendo que está hasheada)
-                if check_password_hash(admin_user['password_hash'], password):
-                    if admin_token == "GABRIEL_2026":
-                        session['user_id'] = admin_user['id']
-                        session['username'] = admin_user['nombre']
-                        session['role'] = 'admin'
-                        flash("Bienvenido, administrador!")
-                        return redirect(url_for('admin_dashboard'))
-                    else:
-                        flash("Falta el token de seguridad para administradores")
-                        return redirect(url_for('login'))
-                else:
-                    flash("Contraseña incorrecta")
-                    return redirect(url_for('login'))
+        # Guardar sesión
+        session['user_id'] = 1
+        session['username'] = username
+        session['role'] = role
 
-            # --- INTENTO 2: Buscar como Usuario Común ---
-            cursor.execute("SELECT * FROM usuarios_comunes WHERE nombre = %s", (username,))
-            normal_user = cursor.fetchone()
-            
-            if normal_user:
-                # Verificar contraseña (asumiendo que está hasheada)
-                if check_password_hash(normal_user['password_hash'], password):
-                    session['user_id'] = normal_user['id']
-                    session['username'] = normal_user['nombre']
-                    session['role'] = 'user'
-                    flash("Bienvenido!")
-                    return redirect(url_for('index'))
-                else:
-                    flash("Contraseña incorrecta")
-                    return redirect(url_for('login'))
-            
-            # Si no se encontró el usuario en ninguna tabla
-            flash("Usuario no encontrado")
-            return redirect(url_for('login'))
-                
-        except Exception as e:
-            print(f"Error en login: {e}")
-            flash("Error interno del servidor")
-            return redirect(url_for('login'))
-        finally:
-            cursor.close()
-            conn.close()
-        
+        if role == "admin":
+            return redirect(url_for('admin_dashboard'))
+        else:
+            return redirect(url_for('index'))
+
     return render_template('login.html')
 
 @app.route('/upload', methods=['POST'])
@@ -388,10 +340,6 @@ def download(filename):
         # 3. Siempre cerrar cursor y conexión
         cursor.close()
         conn.close()
-
-if __name__ == "__main__":
-    # Crear usuarios de prueba al iniciar la aplicación
-    create_test_users()
     
     import os
     port = int(os.environ.get("PORT", 10000))
