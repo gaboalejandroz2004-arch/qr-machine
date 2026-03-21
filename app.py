@@ -144,15 +144,34 @@ def login():
             flash("Ingrese un nombre de usuario")
             return redirect(url_for('login'))
 
-        # Guardar sesión
-        session['user_id'] = 1
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+
+        table = "usuarios_admin" if role == "admin" else "usuarios_comunes"
+
+        cursor.execute(f"SELECT id FROM {table} WHERE nombre = %s LIMIT 1", (username,))
+        user = cursor.fetchone()
+
+        if user:
+            user_id = user["id"]
+        else:
+            cursor.execute(
+                f"INSERT INTO {table} (nombre, apellido, password_hash) VALUES (%s, %s, %s)",
+                (username, "test", generate_password_hash("123456"))
+            )
+            conn.commit()
+            user_id = cursor.lastrowid
+
+        cursor.close()
+        conn.close()
+
+        session['user_id'] = user_id
         session['username'] = username
         session['role'] = role
 
         if role == "admin":
             return redirect(url_for('admin_dashboard'))
-        else:
-            return redirect(url_for('index'))
+        return redirect(url_for('index'))
 
     return render_template('login.html')
 
