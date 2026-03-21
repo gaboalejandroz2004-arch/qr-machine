@@ -274,7 +274,7 @@ def index():
             if session.get('role') == 'admin':
                 cur.execute(sql, (filename, extension, token, session['user_id'], None))
             else:
-                cur.execute(sql, (filename, extension, token, None, session['user_id']))
+                 cur.execute(sql, (filename, extension, token, None, session['user_id']))
             
             conn.commit() # Asegúrate de que esta línea esté presente
             
