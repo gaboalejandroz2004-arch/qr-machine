@@ -370,6 +370,6 @@ def download(filename):
         cursor.close()
         conn.close()
     
-    import os
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host='0.0.0.0', port=port)
+import os
+port = int(os.environ.get("PORT", 10000))
+app.run(host='0.0.0.0', port=port)
