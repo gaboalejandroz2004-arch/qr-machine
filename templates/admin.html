@@ -11,8 +11,11 @@
   <body>
     <div class="container">
       <h1>Panel de Control (Admin)</h1>
-      <a href="{{ url_for('index') }}" class="btn">Volver a Subir Archivos</a>
-      <a href="{{ url_for('logout') }}" class="btn-danger">Cerrar Sesión</a>
+
+      <!-- Botón cerrar sesión -->
+      <div class="top-actions">
+        <a href="{{ url_for('logout') }}" class="btn-logout">Cerrar Sesión</a>
+      </div>
 
       <hr />
 
@@ -27,7 +30,7 @@
         <tbody>
           {% for usuario in usuarios %}
           <tr>
-            <td>{{ usuario.username }}</td>
+            <td>{{ usuario.nombre }} {{ usuario.apellido }}</td>
             <td>{{ usuario.last_login }}</td>
           </tr>
           {% endfor %}
@@ -57,8 +60,9 @@
                   return confirm('¿Estás seguro de eliminar este archivo?');
                 "
                 class="btn-delete"
-                >Eliminar</a
               >
+                Eliminar
+              </a>
             </td>
           </tr>
           {% endfor %}
