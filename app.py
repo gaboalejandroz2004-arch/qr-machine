@@ -9,6 +9,7 @@ from urllib.parse import quote
 from werkzeug.security import generate_password_hash, check_password_hash
 from PyPDF2 import PdfReader
 from docx import Document
+from datetime import datetime
 
 # Configuración Flask
 app = Flask(__name__, static_folder='static', static_url_path='/static')
@@ -140,6 +141,13 @@ def login():
         username = request.form.get('username', '').strip()
         password = request.form.get('password', '').strip()
         role = request.form.get('role')
+        now = datetime.now()
+        cursor.execute(f"UPDATE {table} SET last_login = %s WHERE id = %s", (now, user_id))
+        conn.commit()
+        cursor.execute(
+        f"INSERT INTO {table} (nombre, apellido, password_hash, last_login) VALUES (%s, %s, %s, %s)",
+        (username, "usuario", password_hash, datetime.now())
+        )
 
         if not username or not password or not role:
             flash("Complete todos los campos")
@@ -207,8 +215,12 @@ def admin_dashboard():
     cursor.execute("SELECT * FROM archivos")
     archivos = cursor.fetchall()
     
-    # CORRECCIÓN: Ver usuarios de la tabla correcta (usuarios_comunes)
-    cursor.execute("SELECT nombre, apellido FROM usuarios_comunes")
+    # Ver usuarios de la tabla correcta (usuarios_comunes)
+    cursor.execute("""
+    SELECT nombre, apellido, last_login
+    FROM usuarios_comunes
+    ORDER BY last_login DESC
+    """)
     usuarios = cursor.fetchall()
     
     cursor.close()
