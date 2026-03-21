@@ -306,16 +306,26 @@ def index():
 def filter_by_extension(extension):
     if 'user_id' not in session:
         return redirect(url_for('login'))
+
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+
     if session.get('role') == 'admin':
-        cursor.execute("""SELECT nombre, extension, fecha_subida, id
-                          FROM archivos WHERE extension = %s
-                          ORDER BY fecha_subida DESC""", (extension,))
+        cursor.execute("""
+            SELECT nombre, extension, fecha_subida, id
+            FROM archivos WHERE extension = %s
+            ORDER BY fecha_subida DESC
+        """, (extension,))
     else:
-        cursor.execute("""SELECT nombre, extension, fecha_subida, id
-                          FROM archivos WHERE extension = %s AND usuario_comun_id = %s
-                          ORDER BY fecha_subida DESC""",
-                       (extension, session['user_id']))
+        cursor.execute("""
+            SELECT nombre, extension, fecha_subida, id
+            FROM archivos WHERE extension = %s AND usuario_comun_id = %s
+            ORDER BY fecha_subida DESC
+        """, (extension, session['user_id']))
+
     filtered = cursor.fetchall()
+    cursor.close()
+    conn.close()
     return render_template("index.html", historial=filtered)
 
 @app.route('/download/<filename>')
