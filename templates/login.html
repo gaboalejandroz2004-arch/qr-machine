@@ -3,7 +3,6 @@
   <head>
     <meta charset="UTF-8" />
     <title>Login - QR MACHINE</title>
-
     <link
       rel="stylesheet"
       href="{{ url_for('static', filename='estilos.css') }}"
@@ -22,9 +21,15 @@
           required
         />
 
+        <input
+          type="password"
+          name="password"
+          placeholder="Contraseña"
+          required
+        />
+
         <select name="role" required>
           <option value="user">Usuario</option>
-
           <option value="admin">Administrador</option>
         </select>
 
