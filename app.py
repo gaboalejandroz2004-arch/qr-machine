@@ -137,27 +137,42 @@ def allowed_file(filename):
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
-        username = request.form.get('username')
+        username = request.form.get('username', '').strip()
+        password = request.form.get('password', '').strip()
         role = request.form.get('role')
 
-        if not username:
-            flash("Ingrese un nombre de usuario")
+        if not username or not password or not role:
+            flash("Complete todos los campos")
             return redirect(url_for('login'))
 
         conn = get_db_connection()
+        if not conn:
+            flash("No se pudo conectar a la base de datos")
+            return redirect(url_for('login'))
+
         cursor = conn.cursor(dictionary=True)
 
         table = "usuarios_admin" if role == "admin" else "usuarios_comunes"
 
-        cursor.execute(f"SELECT id FROM {table} WHERE nombre = %s LIMIT 1", (username,))
+        # Buscar si ya existe el usuario
+        cursor.execute(f"SELECT id, password_hash FROM {table} WHERE nombre = %s LIMIT 1", (username,))
         user = cursor.fetchone()
 
         if user:
+            # Usuario existente: validar contraseña
+            if not check_password_hash(user["password_hash"], password):
+                cursor.close()
+                conn.close()
+                flash("Contraseña incorrecta")
+                return redirect(url_for('login'))
+
             user_id = user["id"]
         else:
+            # Usuario nuevo: se crea automáticamente
+            password_hash = generate_password_hash(password)
             cursor.execute(
                 f"INSERT INTO {table} (nombre, apellido, password_hash) VALUES (%s, %s, %s)",
-                (username, "test", generate_password_hash("123456"))
+                (username, "usuario", password_hash)
             )
             conn.commit()
             user_id = cursor.lastrowid
