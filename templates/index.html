@@ -3,7 +3,6 @@
   <head>
     <meta charset="UTF-8" />
     <title>QR MACHINE</title>
-    <!-- enlace a la hoja de estilos estática -->
     <link
       rel="stylesheet"
       type="text/css"
@@ -13,7 +12,6 @@
   <body>
     <h1>QR MACHINE - Gestión de Archivos</h1>
 
-    <!-- Navegación -->
     <nav>
       <a href="{{ url_for('logout') }}">Cerrar Sesión</a>
       {% if session['role'] == 'admin' %}
@@ -24,7 +22,6 @@
     </nav>
 
     <div class="main-box">
-      <!-- Mostrar QR si se acaba de generar -->
       {% if qr_filename %}
       <h2>QR Generado para el Archivo Subido</h2>
       <p>Escanea este QR para ver el contenido del documento:</p>
@@ -56,21 +53,21 @@
         <tbody>
           {% for fila in historial %}
           <tr>
-            <td>{{ fila[0] }}</td>
-            <td>{{ fila[1] }}</td>
-            <td>{{ fila[2] }}</td>
+            <td>{{ fila['nombre'] }}</td>
+            <td>{{ fila['extension'] }}</td>
+            <td>{{ fila['fecha_subida'] }}</td>
             {% if session['role'] == 'admin' %}
-            <td><strong>{{ fila[4] }}</strong></td>
+            <td><strong>{{ fila['subido_por'] }}</strong></td>
             {% endif %}
             <td>
               <a
-                href="{{ url_for('static', filename=fila[0] + '.png') }}"
+                href="{{ url_for('static', filename=fila['nombre'] + '.png') }}"
                 download
                 >Descargar QR</a
               >
               {% if session['role'] == 'admin' %}
               <a
-                href="{{ url_for('delete', id_db=fila[3]) }}"
+                href="{{ url_for('delete', id_db=fila['id']) }}"
                 class="btn-delete"
                 >Eliminar</a
               >
