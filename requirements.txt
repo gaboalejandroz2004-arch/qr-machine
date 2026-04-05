@@ -1,9 +1,6 @@
 Flask
-mysql-connector-python
-python-dotenv
 qrcode
-gunicorn
+psycopg2-binary
+werkzeug
 PyPDF2
 python-docx
-Pillow
-cryptography
