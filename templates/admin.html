@@ -2,6 +2,7 @@
 <html lang="es">
   <head>
     <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Panel de Administración - QR Machine</title>
     <link
       rel="stylesheet"
@@ -12,14 +13,13 @@
     <div class="container">
       <h1>Panel de Control (Admin)</h1>
 
-      <!-- Botón cerrar sesión -->
       <div class="top-actions">
         <a href="{{ url_for('logout') }}" class="btn-logout">Cerrar Sesión</a>
       </div>
 
       <hr />
 
-      <h3>Usuarios que han iniciado sesión</h3>
+      <h3>Usuarios Registrados</h3>
       <table>
         <thead>
           <tr>
@@ -28,12 +28,18 @@
           </tr>
         </thead>
         <tbody>
-          {% for usuario in usuarios %}
+          {% if usuarios %} {% for usuario in usuarios %}
           <tr>
             <td>{{ usuario.nombre }} {{ usuario.apellido }}</td>
-            <td>{{ usuario.last_login }}</td>
+            <td>{{ usuario.last_login or 'Sin registro previo' }}</td>
           </tr>
-          {% endfor %}
+          {% endfor %} {% else %}
+          <tr>
+            <td colspan="2" style="text-align: center">
+              No hay usuarios para mostrar.
+            </td>
+          </tr>
+          {% endif %}
         </tbody>
       </table>
 
@@ -49,15 +55,22 @@
           </tr>
         </thead>
         <tbody>
-          {% for archivo in archivos %}
+          {% if archivos %} {% for archivo in archivos %}
           <tr>
             <td>{{ archivo.nombre }}</td>
-            <td><code>{{ archivo.token[:10] }}...</code></td>
+            <td>
+              <code
+                >{{ archivo.token[:10] if archivo.token else 'Sin token'
+                }}...</code
+              >
+            </td>
             <td>
               <a
                 href="{{ url_for('delete_file', file_id=archivo.id) }}"
                 onclick="
-                  return confirm('¿Estás seguro de eliminar este archivo?');
+                  return confirm(
+                    '¿Estás seguro de eliminar este archivo del historial?',
+                  );
                 "
                 class="btn-delete"
               >
@@ -65,7 +78,13 @@
               </a>
             </td>
           </tr>
-          {% endfor %}
+          {% endfor %} {% else %}
+          <tr>
+            <td colspan="3" style="text-align: center">
+              No se han subido archivos aún.
+            </td>
+          </tr>
+          {% endif %}
         </tbody>
       </table>
     </div>
