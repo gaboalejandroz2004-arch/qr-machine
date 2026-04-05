@@ -4,7 +4,7 @@ import psycopg2
 from psycopg2 import extras
 import secrets
 from flask import (Flask, render_template, request, send_file,
-                   redirect, url_for, session, flash)
+                   redirect, url_for, session, flash, send_from_directory)
 from werkzeug.utils import secure_filename
 from urllib.parse import quote
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -70,24 +70,6 @@ def init_db():
 
 init_db()
 
-def _dated_url_for(endpoint, **values):
-    if endpoint == 'static':
-        filename = values.get('filename')
-        if filename:
-            file_path = os.path.join(app.static_folder, filename)
-            if os.path.exists(file_path):
-                values['q'] = int(os.stat(file_path).st_mtime)
-    return url_for(endpoint, **values)
-
-@app.context_processor
-def override_url_for():
-    return dict(url_for=_dated_url_for)
-
-def allowed_file(filename):
-    return '.' in filename and filename.rsplit('.', 1)[1].lower() in app.config['ALLOWED_EXTENSIONS']
-
-# --- RUTAS ---
-
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
@@ -124,59 +106,72 @@ def login():
 
         session.update({'user_id': user_id, 'username': username, 'role': role})
         conn.close()
-        return redirect(url_for('admin_dashboard' if role == "admin" else 'index'))
+        return redirect(url_for('index')) # Redirigido a index por simplicidad
 
     return render_template('login.html')
 
 @app.route('/', methods=['GET', 'POST'])
 def index():
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+
+    conn = get_db_connection()
+    qr_filename = None
+
     if request.method == 'POST':
-        file = request.files['file']
-        if file:
-            filename = file.filename
-            # 1. Generar un token único para este archivo
+        file = request.files.get('file')
+        if file and file.filename != '':
+            filename = secure_filename(file.filename)
             token_seguro = secrets.token_urlsafe(16)
             
-            # 2. Guardar el archivo físicamente
+            # Guardar archivo
             file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
             
-            # 3. Guardar en Neon (incluyendo el token)
-            cur = conn.cursor()
-            query = """
-                INSERT INTO archivos (nombre, extension, fecha_subida, subido_por, token) 
-                VALUES (%s, %s, NOW(), %s, %s)
-            """
-            cur.execute(query, (filename, 'pdf', session['username'], token_seguro))
-            conn.commit()
-            cur.close()
+            # Guardar en DB con IDs de usuario correctos
+            with conn.cursor() as cur:
+                u_comun = session['user_id'] if session['role'] != 'admin' else None
+                u_admin = session['user_id'] if session['role'] == 'admin' else None
+                
+                cur.execute("""
+                    INSERT INTO archivos (nombre, extension, token, usuario_comun_id, usuario_admin_id) 
+                    VALUES (%s, %s, %s, %s, %s)
+                """, (filename, filename.rsplit('.', 1)[1].lower(), token_seguro, u_comun, u_admin))
+                conn.commit()
 
-            # 4. Generar la URL del QR con ese token
+            # Generar QR físico en carpeta static
             qr_filename = f"{filename}.png"
-            base_url = os.environ.get("BASE_URL")
-            link_descarga = f"{base_url}/download/{filename}?token={token_seguro}"
-    
+            qr_path = os.path.join(app.static_folder, qr_filename)
+            link_descarga = f"{BASE_URL}/download/{filename}?token={token_seguro}"
+            img = qrcode.make(link_descarga)
+            img.save(qr_path)
+
+    # Obtener historial (siempre se ejecuta para GET y POST)
+    with conn.cursor(cursor_factory=extras.RealDictCursor) as cur:
+        cur.execute("""
+            SELECT a.*, COALESCE(uc.nombre, ua.nombre) as subido_por 
+            FROM archivos a
+            LEFT JOIN usuarios_comunes uc ON a.usuario_comun_id = uc.id
+            LEFT JOIN usuarios_admin ua ON a.usuario_admin_id = ua.id
+            ORDER BY a.fecha_subida DESC
+        """)
+        historial = cur.fetchall()
+
+    conn.close()
     return render_template("index.html", historial=historial, qr_filename=qr_filename)
 
 @app.route('/download/<filename>')
 def download_file(filename):
-    # Obtener el token que viene en la URL del QR
     token_recibido = request.args.get('token')
+    conn = get_db_connection()
     
-    cur = conn.cursor()
-    # Buscamos en la base de datos si el archivo existe y cuál es su token
-    cur.execute("SELECT token FROM archivos WHERE nombre = %s", (filename,))
-    resultado = cur.fetchone()
-    cur.close()
+    with conn.cursor(cursor_factory=extras.RealDictCursor) as cur:
+        cur.execute("SELECT token FROM archivos WHERE nombre = %s", (filename,))
+        resultado = cur.fetchone()
+    conn.close()
 
-    if resultado:
-        # 'resultado' es un diccionario gracias a RealDictCursor
-        token_real = resultado['token']
-        
-        if token_recibido == token_real:
-            # Si coinciden, permitimos la descarga
-            return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
+    if resultado and token_recibido == resultado['token']:
+        return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
     
-    # Si no coinciden o no existe el archivo
     return "Token inválido o archivo no encontrado", 403
 
 @app.route('/logout')
@@ -185,6 +180,5 @@ def logout():
     return redirect(url_for('login'))
 
 if __name__ == '__main__':
-    # No pongas db.cursor() aquí afuera
     port = int(os.environ.get("PORT", 10000))
     app.run(host='0.0.0.0', port=port)
