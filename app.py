@@ -45,17 +45,12 @@ def _dated_url_for(endpoint, **values):
 
 def get_db_connection():
     try:
-        return mysql.connector.connect(
-            host=os.getenv("MYSQLHOST", "localhost"),
-            user=os.getenv("MYSQLUSER", "root"),
-            password=os.getenv("MYSQLPASSWORD", "29012004"),
-            database=os.getenv("MYSQLDATABASE", "qr_machine"),
-            port=int(os.getenv("MYSQLPORT", 52525))
-        )
-    except mysql.connector.Error as e:
+        # Usamos la variable DATABASE_URL que configuraste en Render
+        conn_url = os.getenv("DATABASE_URL")
+        return psycopg2.connect(conn_url)
+    except Exception as e:
         print(f"Error de conexión a la base de datos: {e}")
         return None
-
 
 def create_test_users():
     """Crear usuarios de prueba si no existen"""
@@ -97,39 +92,40 @@ def create_test_users():
 db = get_db_connection()
 cursor = db.cursor()
 
-# 3. Crear tablas (solo si no existen)
+# 3. Crear tablas con sintaxis PostgreSQL
 cursor.execute("""
     CREATE TABLE IF NOT EXISTS usuarios_comunes (
-        id INT AUTO_INCREMENT PRIMARY KEY,
+        id SERIAL PRIMARY KEY,
         nombre VARCHAR(50) NOT NULL,
         apellido VARCHAR(50) NOT NULL,
-        password_hash VARCHAR(255) NOT NULL
+        password_hash VARCHAR(255) NOT NULL,
+        last_login TIMESTAMP
     )
 """)
 
 cursor.execute("""
     CREATE TABLE IF NOT EXISTS usuarios_admin (
-        id INT AUTO_INCREMENT PRIMARY KEY,
+        id SERIAL PRIMARY KEY,
         nombre VARCHAR(50) NOT NULL,
         apellido VARCHAR(50) NOT NULL,
-        password_hash VARCHAR(255) NOT NULL
+        password_hash VARCHAR(255) NOT NULL,
+        last_login TIMESTAMP
     )
 """)
 
 cursor.execute("""
     CREATE TABLE IF NOT EXISTS archivos (
-        id INT AUTO_INCREMENT PRIMARY KEY,
+        id SERIAL PRIMARY KEY,
         nombre VARCHAR(255),
         extension VARCHAR(10),
         token VARCHAR(64),
-        fecha_subida DATETIME DEFAULT CURRENT_TIMESTAMP,
+        fecha_subida TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         usuario_comun_id INT,
         usuario_admin_id INT,
         FOREIGN KEY (usuario_comun_id) REFERENCES usuarios_comunes(id) ON DELETE SET NULL,
         FOREIGN KEY (usuario_admin_id) REFERENCES usuarios_admin(id) ON DELETE SET NULL
     )
 """)
-
 db.commit()
 
 def allowed_file(filename):
