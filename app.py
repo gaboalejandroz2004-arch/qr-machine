@@ -130,67 +130,52 @@ def login():
 
 @app.route('/', methods=['GET', 'POST'])
 def index():
-    if 'user_id' not in session:
-        return redirect(url_for('login'))
-
-    conn = get_db_connection()
-    qr_filename = None
-
     if request.method == 'POST':
-        file = request.files.get('file')
-        if file and allowed_file(file.filename):
-            filename = secure_filename(file.filename)
-            extension = filename.rsplit('.', 1)[1].lower()
-            filepath = os.path.abspath(os.path.join(app.config['UPLOAD_FOLDER'], filename))
-            file.save(filepath)
+        file = request.files['file']
+        if file:
+            filename = file.filename
+            # 1. Generar un token único para este archivo
+            token_seguro = secrets.token_urlsafe(16)
             
-            token = secrets.token_urlsafe(32)
+            # 2. Guardar el archivo físicamente
+            file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+            
+            # 3. Guardar en Neon (incluyendo el token)
+            cur = conn.cursor()
+            query = """
+                INSERT INTO archivos (nombre, extension, fecha_subida, subido_por, token) 
+                VALUES (%s, %s, NOW(), %s, %s)
+            """
+            cur.execute(query, (filename, 'pdf', session['username'], token_seguro))
+            conn.commit()
+            cur.close()
+
+            # 4. Generar la URL del QR con ese token
             qr_filename = f"{filename}.png"
-            qr_path = os.path.abspath(os.path.join(app.root_path, 'static', qr_filename))
-            
-            qr = qrcode.make(f"{BASE_URL}/download/{quote(filename)}?token={token}")
-            qr.save(qr_path)
-
-            with conn.cursor() as cur:
-                sql = "INSERT INTO archivos (nombre, extension, token, usuario_admin_id, usuario_comun_id) VALUES (%s,%s,%s,%s,%s)"
-                params = (filename, extension, token, 
-                          session['user_id'] if session['role'] == 'admin' else None,
-                          session['user_id'] if session['role'] != 'admin' else None)
-                cur.execute(sql, params)
-                conn.commit()
-
-    with conn.cursor(cursor_factory=extras.RealDictCursor) as cur:
-        if session.get('role') == 'admin':
-            cur.execute("""
-                SELECT a.*, COALESCE(uc.nombre, ua.nombre) as subido_por
-                FROM archivos a
-                LEFT JOIN usuarios_comunes uc ON a.usuario_comun_id = uc.id
-                LEFT JOIN usuarios_admin ua ON a.usuario_admin_id = ua.id
-                ORDER BY a.fecha_subida DESC
-            """)
-        else:
-            cur.execute("SELECT * FROM archivos WHERE usuario_comun_id = %s ORDER BY fecha_subida DESC", (session['user_id'],))
-        historial = cur.fetchall()
-
-    conn.close()
-    return render_template("index.html", historial=historial, qr_filename=qr_filename)
+            base_url = os.environ.get("BASE_URL")
+            link_descarga = f"{base_url}/download/{filename}?token={token_seguro}"
 
 @app.route('/download/<filename>')
-def download(filename):
-    token = request.args.get('token')
-    if not token: return "Acceso no autorizado", 403
+def download_file(filename):
+    # Obtener el token que viene en la URL del QR
+    token_recibido = request.args.get('token')
+    
+    cur = conn.cursor()
+    # Buscamos en la base de datos si el archivo existe y cuál es su token
+    cur.execute("SELECT token FROM archivos WHERE nombre = %s", (filename,))
+    resultado = cur.fetchone()
+    cur.close()
 
-    conn = get_db_connection()
-    with conn.cursor() as cursor:
-        cursor.execute("SELECT token FROM archivos WHERE nombre=%s", (filename,))
-        result = cursor.fetchone()
+    if resultado:
+        # 'resultado' es un diccionario gracias a RealDictCursor
+        token_real = resultado['token']
         
-    conn.close()
-    if not result or token != result[0]:
-        return "Token inválido o archivo no encontrado", 403
-
-    filepath = os.path.abspath(os.path.join(app.config['UPLOAD_FOLDER'], filename))
-    return send_file(filepath, as_attachment=True)
+        if token_recibido == token_real:
+            # Si coinciden, permitimos la descarga
+            return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
+    
+    # Si no coinciden o no existe el archivo
+    return "Token inválido o archivo no encontrado", 403
 
 @app.route('/logout')
 def logout():
