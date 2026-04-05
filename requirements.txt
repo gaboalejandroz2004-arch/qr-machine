@@ -5,3 +5,4 @@ werkzeug
 PyPDF2
 python-docx
 gunicorn
+Pillow
