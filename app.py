@@ -154,6 +154,8 @@ def index():
             qr_filename = f"{filename}.png"
             base_url = os.environ.get("BASE_URL")
             link_descarga = f"{base_url}/download/{filename}?token={token_seguro}"
+    
+    return render_template("index.html", historial=historial, qr_filename=qr_filename)
 
 @app.route('/download/<filename>')
 def download_file(filename):
