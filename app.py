@@ -70,6 +70,7 @@ def init_db():
 
 init_db()
 
+# --- RUTAS DE AUTENTICACIÓN ---
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
@@ -106,10 +107,21 @@ def login():
 
         session.update({'user_id': user_id, 'username': username, 'role': role})
         conn.close()
-        return redirect(url_for('index')) # Redirigido a index por simplicidad
+        
+        # Redirección inteligente dependiendo del rol
+        if role == 'admin':
+            return redirect(url_for('admin_dashboard'))
+        return redirect(url_for('index'))
 
     return render_template('login.html')
 
+@app.route('/logout')
+def logout():
+    session.clear()
+    return redirect(url_for('login'))
+
+
+# --- RUTAS PARA USUARIO COMÚN (index.html) ---
 @app.route('/', methods=['GET', 'POST'])
 def index():
     if 'user_id' not in session:
@@ -123,11 +135,12 @@ def index():
         if file and file.filename != '':
             filename = secure_filename(file.filename)
             token_seguro = secrets.token_urlsafe(16)
+            extension_archivo = filename.rsplit('.', 1)[1].lower() if '.' in filename else ''
             
-            # Guardar archivo
+            # Guardar archivo físicamente
             file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
             
-            # Guardar en DB con IDs de usuario correctos
+            # Guardar en DB
             with conn.cursor() as cur:
                 u_comun = session['user_id'] if session['role'] != 'admin' else None
                 u_admin = session['user_id'] if session['role'] == 'admin' else None
@@ -135,17 +148,17 @@ def index():
                 cur.execute("""
                     INSERT INTO archivos (nombre, extension, token, usuario_comun_id, usuario_admin_id) 
                     VALUES (%s, %s, %s, %s, %s)
-                """, (filename, filename.rsplit('.', 1)[1].lower(), token_seguro, u_comun, u_admin))
+                """, (filename, extension_archivo, token_seguro, u_comun, u_admin))
                 conn.commit()
 
-            # Generar QR físico en carpeta static
+            # Generar QR
             qr_filename = f"{filename}.png"
             qr_path = os.path.join(app.static_folder, qr_filename)
             link_descarga = f"{BASE_URL}/download/{filename}?token={token_seguro}"
             img = qrcode.make(link_descarga)
             img.save(qr_path)
 
-    # Obtener historial (siempre se ejecuta para GET y POST)
+    # Obtener el historial completo
     with conn.cursor(cursor_factory=extras.RealDictCursor) as cur:
         cur.execute("""
             SELECT a.*, COALESCE(uc.nombre, ua.nombre) as subido_por 
@@ -159,6 +172,76 @@ def index():
     conn.close()
     return render_template("index.html", historial=historial, qr_filename=qr_filename)
 
+@app.route('/filter/<extension>')
+def filter(extension):
+    if 'user_id' not in session or session.get('role') != 'admin':
+        return redirect(url_for('index'))
+        
+    conn = get_db_connection()
+    with conn.cursor(cursor_factory=extras.RealDictCursor) as cur:
+        cur.execute("""
+            SELECT a.*, COALESCE(uc.nombre, ua.nombre) as subido_por 
+            FROM archivos a
+            LEFT JOIN usuarios_comunes uc ON a.usuario_comun_id = uc.id
+            LEFT JOIN usuarios_admin ua ON a.usuario_admin_id = ua.id
+            WHERE a.extension = %s
+            ORDER BY a.fecha_subida DESC
+        """, (extension,))
+        historial = cur.fetchall()
+    conn.close()
+    return render_template("index.html", historial=historial, qr_filename=None)
+
+@app.route('/delete/<int:id_db>')
+def delete(id_db):
+    if 'user_id' not in session or session.get('role') != 'admin':
+        return redirect(url_for('index'))
+        
+    conn = get_db_connection()
+    with conn.cursor() as cur:
+        cur.execute("DELETE FROM archivos WHERE id = %s", (id_db,))
+        conn.commit()
+    conn.close()
+    return redirect(url_for('index'))
+
+
+# --- RUTAS PARA PANEL DE ADMINISTRADOR (admin.html) ---
+@app.route('/admin')
+def admin_dashboard():
+    if 'user_id' not in session or session.get('role') != 'admin':
+        return redirect(url_for('index'))
+        
+    conn = get_db_connection()
+    with conn.cursor(cursor_factory=extras.RealDictCursor) as cur:
+        # Obtener todos los usuarios unidos
+        cur.execute("""
+            SELECT nombre, apellido, last_login FROM usuarios_comunes
+            UNION ALL
+            SELECT nombre, apellido, last_login FROM usuarios_admin
+            ORDER BY last_login DESC NULLS LAST
+        """)
+        usuarios = cur.fetchall()
+        
+        # Obtener archivos subidos
+        cur.execute("SELECT id, nombre, token FROM archivos ORDER BY fecha_subida DESC")
+        archivos = cur.fetchall()
+        
+    conn.close()
+    return render_template("admin.html", usuarios=usuarios, archivos=archivos)
+
+@app.route('/delete_file/<int:file_id>')
+def delete_file(file_id):
+    if 'user_id' not in session or session.get('role') != 'admin':
+        return redirect(url_for('index'))
+        
+    conn = get_db_connection()
+    with conn.cursor() as cur:
+        cur.execute("DELETE FROM archivos WHERE id = %s", (file_id,))
+        conn.commit()
+    conn.close()
+    return redirect(url_for('admin_dashboard'))
+
+
+# --- RUTA DE DESCARGA GLOBAL ---
 @app.route('/download/<filename>')
 def download_file(filename):
     token_recibido = request.args.get('token')
@@ -173,11 +256,6 @@ def download_file(filename):
         return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
     
     return "Token inválido o archivo no encontrado", 403
-
-@app.route('/logout')
-def logout():
-    session.clear()
-    return redirect(url_for('login'))
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 10000))
