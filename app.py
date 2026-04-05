@@ -8,31 +8,67 @@ from flask import (Flask, render_template, request, send_file,
 from werkzeug.utils import secure_filename
 from urllib.parse import quote
 from werkzeug.security import generate_password_hash, check_password_hash
-from PyPDF2 import PdfReader
-from docx import Document
 from datetime import datetime
 
 # Configuración Flask
 app = Flask(__name__, static_folder='static', static_url_path='/static')
-app.secret_key = 'un-secreto-cualquiera-2026'            # <------ necesario para sesiones
-app.config['UPLOAD_FOLDER'] = 'uploads'
+app.secret_key = os.environ.get('SECRET_KEY', 'un-secreto-cualquiera-2026')
+app.config['UPLOAD_FOLDER'] = os.path.join(app.root_path, 'uploads')
 app.config['ALLOWED_EXTENSIONS'] = {'pdf', 'doc', 'docx'}
 
-UPLOAD_FOLDER = os.path.join(app.root_path, 'uploads')
-app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
-
-if not os.path.exists(UPLOAD_FOLDER):
-    os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-
-if not os.path.exists(os.path.join(app.root_path, 'static')):
-    os.makedirs(os.path.join(app.root_path, 'static'), exist_ok=True)
+if not os.path.exists(app.config['UPLOAD_FOLDER']):
+    os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
 BASE_URL = os.environ.get("BASE_URL", "https://qr-machine.onrender.com")
 
-# Para invalidar caché de archivos estáticos (CSS)
-@app.context_processor
-def override_url_for():
-    return dict(url_for=_dated_url_for)
+def get_db_connection():
+    try:
+        conn_url = os.getenv("DATABASE_URL")
+        return psycopg2.connect(conn_url)
+    except Exception as e:
+        print(f"Error de conexión a la base de datos: {e}")
+        return None
+
+# --- INICIALIZACIÓN DE TABLAS ---
+def init_db():
+    conn = get_db_connection()
+    if not conn: return
+    with conn.cursor() as cursor:
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS usuarios_comunes (
+                id SERIAL PRIMARY KEY,
+                nombre VARCHAR(50) NOT NULL,
+                apellido VARCHAR(50) NOT NULL,
+                password_hash VARCHAR(255) NOT NULL,
+                last_login TIMESTAMP
+            )
+        """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS usuarios_admin (
+                id SERIAL PRIMARY KEY,
+                nombre VARCHAR(50) NOT NULL,
+                apellido VARCHAR(50) NOT NULL,
+                password_hash VARCHAR(255) NOT NULL,
+                last_login TIMESTAMP
+            )
+        """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS archivos (
+                id SERIAL PRIMARY KEY,
+                nombre VARCHAR(255),
+                extension VARCHAR(10),
+                token VARCHAR(64),
+                fecha_subida TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                usuario_comun_id INT,
+                usuario_admin_id INT,
+                FOREIGN KEY (usuario_comun_id) REFERENCES usuarios_comunes(id) ON DELETE SET NULL,
+                FOREIGN KEY (usuario_admin_id) REFERENCES usuarios_admin(id) ON DELETE SET NULL
+            )
+        """)
+    conn.commit()
+    conn.close()
+
+init_db()
 
 def _dated_url_for(endpoint, **values):
     if endpoint == 'static':
@@ -43,357 +79,124 @@ def _dated_url_for(endpoint, **values):
                 values['q'] = int(os.stat(file_path).st_mtime)
     return url_for(endpoint, **values)
 
-def get_db_connection():
-    try:
-        # Usamos la variable DATABASE_URL que configuraste en Render
-        conn_url = os.getenv("DATABASE_URL")
-        return psycopg2.connect(conn_url)
-    except Exception as e:
-        print(f"Error de conexión a la base de datos: {e}")
-        return None
-
-def create_test_users():
-    """Crear usuarios de prueba si no existen"""
-    conn = get_db_connection()
-    if not conn:
-        print("No se pudo conectar a la base de datos para crear usuarios de prueba")
-        return
-        
-    cursor = conn.cursor()
-    
-    try:
-        # Crear usuario admin de prueba
-        admin_password_hash = generate_password_hash("admin123")
-        cursor.execute("""
-            INSERT IGNORE INTO usuarios_admin (nombre, apellido, password_hash) 
-            VALUES (%s, %s, %s)
-        """, ("admin", "test", admin_password_hash))
-        
-        # Crear usuario común de prueba
-        user_password_hash = generate_password_hash("user123")
-        cursor.execute("""
-            INSERT IGNORE INTO usuarios_comunes (nombre, apellido, password_hash) 
-            VALUES (%s, %s, %s)
-        """, ("user", "test", user_password_hash))
-        
-        conn.commit()
-        print("Usuarios de prueba creados:")
-        print("Admin: usuario='admin', contraseña='admin123', token='GABRIEL_2026'")
-        print("Usuario: usuario='user', contraseña='user123'")
-        
-    except Exception as e:
-        print(f"Error creando usuarios de prueba: {e}")
-    finally:
-        cursor.close()
-        conn.close()
-
-
-# 2. Inicializar conexión y tablas
-db = get_db_connection()
-cursor = db.cursor()
-
-# 3. Crear tablas con sintaxis PostgreSQL
-cursor.execute("""
-    CREATE TABLE IF NOT EXISTS usuarios_comunes (
-        id SERIAL PRIMARY KEY,
-        nombre VARCHAR(50) NOT NULL,
-        apellido VARCHAR(50) NOT NULL,
-        password_hash VARCHAR(255) NOT NULL,
-        last_login TIMESTAMP
-    )
-""")
-
-cursor.execute("""
-    CREATE TABLE IF NOT EXISTS usuarios_admin (
-        id SERIAL PRIMARY KEY,
-        nombre VARCHAR(50) NOT NULL,
-        apellido VARCHAR(50) NOT NULL,
-        password_hash VARCHAR(255) NOT NULL,
-        last_login TIMESTAMP
-    )
-""")
-
-cursor.execute("""
-    CREATE TABLE IF NOT EXISTS archivos (
-        id SERIAL PRIMARY KEY,
-        nombre VARCHAR(255),
-        extension VARCHAR(10),
-        token VARCHAR(64),
-        fecha_subida TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        usuario_comun_id INT,
-        usuario_admin_id INT,
-        FOREIGN KEY (usuario_comun_id) REFERENCES usuarios_comunes(id) ON DELETE SET NULL,
-        FOREIGN KEY (usuario_admin_id) REFERENCES usuarios_admin(id) ON DELETE SET NULL
-    )
-""")
-db.commit()
+@app.context_processor
+def override_url_for():
+    return dict(url_for=_dated_url_for)
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in app.config['ALLOWED_EXTENSIONS']
 
-# Autenticación
+# --- RUTAS ---
+
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
         username = request.form.get('username', '').strip()
         password = request.form.get('password', '').strip()
         role = request.form.get('role')
-        now = datetime.now()
-        cursor.execute(f"UPDATE {table} SET last_login = %s WHERE id = %s", (now, user_id))
-        conn.commit()
-        cursor.execute(
-        f"INSERT INTO {table} (nombre, apellido, password_hash, last_login) VALUES (%s, %s, %s, %s)",
-        (username, "usuario", password_hash, datetime.now())
-        )
 
         if not username or not password or not role:
             flash("Complete todos los campos")
             return redirect(url_for('login'))
 
         conn = get_db_connection()
-        if not conn:
-            flash("No se pudo conectar a la base de datos")
-            return redirect(url_for('login'))
-
-        cursor = conn.cursor(dictionary=True)
-
         table = "usuarios_admin" if role == "admin" else "usuarios_comunes"
+        
+        with conn.cursor(cursor_factory=extras.RealDictCursor) as cursor:
+            cursor.execute(f"SELECT id, password_hash FROM {table} WHERE nombre = %s", (username,))
+            user = cursor.fetchone()
 
-        # Buscar si ya existe el usuario
-        cursor.execute(f"SELECT id, password_hash FROM {table} WHERE nombre = %s LIMIT 1", (username,))
-        user = cursor.fetchone()
-
-        if user:
-            # Usuario existente: validar contraseña
-            if not check_password_hash(user["password_hash"], password):
-                cursor.close()
-                conn.close()
-                flash("Contraseña incorrecta")
-                return redirect(url_for('login'))
-
-            user_id = user["id"]
-        else:
-            # Usuario nuevo: se crea automáticamente
-            password_hash = generate_password_hash(password)
-            cursor.execute(
-                f"INSERT INTO {table} (nombre, apellido, password_hash) VALUES (%s, %s, %s)",
-                (username, "usuario", password_hash)
-            )
+            if user:
+                if not check_password_hash(user["password_hash"], password):
+                    flash("Contraseña incorrecta")
+                    return redirect(url_for('login'))
+                user_id = user["id"]
+            else:
+                password_hash = generate_password_hash(password)
+                cursor.execute(
+                    f"INSERT INTO {table} (nombre, apellido, password_hash) VALUES (%s, %s, %s) RETURNING id",
+                    (username, "usuario", password_hash)
+                )
+                user_id = cursor.fetchone()['id']
+            
+            cursor.execute(f"UPDATE {table} SET last_login = %s WHERE id = %s", (datetime.now(), user_id))
             conn.commit()
-            user_id = cursor.lastrowid
 
-        cursor.close()
+        session.update({'user_id': user_id, 'username': username, 'role': role})
         conn.close()
-
-        session['user_id'] = user_id
-        session['username'] = username
-        session['role'] = role
-
-        if role == "admin":
-            return redirect(url_for('admin_dashboard'))
-        return redirect(url_for('index'))
+        return redirect(url_for('admin_dashboard' if role == "admin" else 'index'))
 
     return render_template('login.html')
 
-@app.route('/upload', methods=['POST'])
-def upload_file():
-    # lógica actual de guardar archivo y generar QR
-    return "QR Generado y archivo subido con éxito"
-
-@app.route('/admin/dashboard')
-def admin_dashboard():
-    if session.get('role') != 'admin':
-        return "Acceso denegado", 403
-    
-    conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True, buffered=True)
-    
-    # Ver todos los archivos
-    cursor.execute("SELECT * FROM archivos")
-    archivos = cursor.fetchall()
-    
-    # Ver usuarios de la tabla correcta (usuarios_comunes)
-    cursor.execute("""
-    SELECT nombre, apellido, last_login
-    FROM usuarios_comunes
-    ORDER BY last_login DESC
-    """)
-    usuarios = cursor.fetchall()
-    
-    cursor.close()
-    conn.close()
-    return render_template('admin.html', archivos=archivos, usuarios=usuarios)
-
-# Opcion de borrado de archivos (modo administrador)
-@app.route('/admin/delete/<int:file_id>')
-def delete_file(file_id):
-    if session.get('role') != 'admin':
-        return "Acceso denegado", 403
-
-    conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
-
-    cursor.execute("SELECT nombre FROM archivos WHERE id = %s", (file_id,))
-    archivo = cursor.fetchone()
-
-    if archivo:
-        nombre_archivo = archivo['nombre']
-        cursor.execute("DELETE FROM archivos WHERE id = %s", (file_id,))
-        conn.commit()
-
-        # Borrar archivos físicos
-        try:
-            os.remove(os.path.join(app.config['UPLOAD_FOLDER'], nombre_archivo))
-            os.remove(os.path.join(app.root_path, 'static', f"{nombre_archivo}.png"))
-        except:
-            pass
-
-    cursor.close()
-    conn.close()
-    return redirect(url_for('admin_dashboard'))
-
-@app.route('/logout')
-def logout():
-    session.clear()
-    return redirect(url_for('login'))
-
-# 4. Rutas principales
 @app.route('/', methods=['GET', 'POST'])
 def index():
     if 'user_id' not in session:
         return redirect(url_for('login'))
 
-    # CREAR CONEXIÓN DENTRO DE LA FUNCIÓN
     conn = get_db_connection()
-    cur = conn.cursor()
-
-    qr_filename = None  
+    qr_filename = None
 
     if request.method == 'POST':
         file = request.files.get('file')
         if file and allowed_file(file.filename):
             filename = secure_filename(file.filename)
             extension = filename.rsplit('.', 1)[1].lower()
-            
-            # --- CAMBIO 1: Forzar ruta absoluta para el archivo subido ---
             filepath = os.path.abspath(os.path.join(app.config['UPLOAD_FOLDER'], filename))
             file.save(filepath)
             
             token = secrets.token_urlsafe(32)
-
-            # Generar QR
-            qr = qrcode.QRCode(version=1, box_size=10, border=5)
-            filename_encoded = quote(filename)
-            qr.add_data(f"{BASE_URL}/download/{filename_encoded}?token={token}")
-            qr.make(fit=True)
-            img = qr.make_image(fill='black', back_color='white')
-            
-            # --- CAMBIO 2: Forzar ruta absoluta para la imagen del QR ---
             qr_filename = f"{filename}.png"
             qr_path = os.path.abspath(os.path.join(app.root_path, 'static', qr_filename))
-            img.save(qr_path)
+            
+            qr = qrcode.make(f"{BASE_URL}/download/{quote(filename)}?token={token}")
+            qr.save(qr_path)
 
-            # --- CAMBIO 3: Asegurar el commit a la base de datos ---
-            sql = "INSERT INTO archivos (nombre, extension, token, usuario_admin_id, usuario_comun_id) VALUES (%s,%s,%s,%s,%s)"
-            if session.get('role') == 'admin':
-                cur.execute(sql, (filename, extension, token, session['user_id'], None))
-            else:
-                 cur.execute(sql, (filename, extension, token, None, session['user_id']))
-            
-            conn.commit() # Asegúrate de que esta línea esté presente
-            
-    # Obtener historial
-    if session.get('role') == 'admin':
-        cur.execute("""
-            SELECT a.nombre, a.extension, a.fecha_subida, a.id,
-                COALESCE(uc.nombre, ua.nombre) as subido_por
-            FROM archivos a
-            LEFT JOIN usuarios_comunes uc ON a.usuario_comun_id = uc.id
-            LEFT JOIN usuarios_admin ua ON a.usuario_admin_id = ua.id
-            ORDER BY a.fecha_subida DESC
-        """)
-    else:
-        cur.execute("""SELECT nombre, extension, fecha_subida, id
-                          FROM archivos WHERE usuario_comun_id = %s
-                          ORDER BY fecha_subida DESC""",
-                       (session['user_id'],))
-    
-    historial = cur.fetchall()
-    
-    # CERRAR CONEXIÓN AL TERMINAR
-    cur.close()
+            with conn.cursor() as cur:
+                sql = "INSERT INTO archivos (nombre, extension, token, usuario_admin_id, usuario_comun_id) VALUES (%s,%s,%s,%s,%s)"
+                params = (filename, extension, token, 
+                          session['user_id'] if session['role'] == 'admin' else None,
+                          session['user_id'] if session['role'] != 'admin' else None)
+                cur.execute(sql, params)
+                conn.commit()
+
+    with conn.cursor(cursor_factory=extras.RealDictCursor) as cur:
+        if session.get('role') == 'admin':
+            cur.execute("""
+                SELECT a.*, COALESCE(uc.nombre, ua.nombre) as subido_por
+                FROM archivos a
+                LEFT JOIN usuarios_comunes uc ON a.usuario_comun_id = uc.id
+                LEFT JOIN usuarios_admin ua ON a.usuario_admin_id = ua.id
+                ORDER BY a.fecha_subida DESC
+            """)
+        else:
+            cur.execute("SELECT * FROM archivos WHERE usuario_comun_id = %s ORDER BY fecha_subida DESC", (session['user_id'],))
+        historial = cur.fetchall()
+
     conn.close()
-    
     return render_template("index.html", historial=historial, qr_filename=qr_filename)
-
-@app.route('/filter/<extension>')
-def filter_by_extension(extension):
-    if 'user_id' not in session:
-        return redirect(url_for('login'))
-
-    conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
-
-    if session.get('role') == 'admin':
-        cursor.execute("""
-            SELECT nombre, extension, fecha_subida, id
-            FROM archivos WHERE extension = %s
-            ORDER BY fecha_subida DESC
-        """, (extension,))
-    else:
-        cursor.execute("""
-            SELECT nombre, extension, fecha_subida, id
-            FROM archivos WHERE extension = %s AND usuario_comun_id = %s
-            ORDER BY fecha_subida DESC
-        """, (extension, session['user_id']))
-
-    filtered = cursor.fetchall()
-    cursor.close()
-    conn.close()
-    return render_template("index.html", historial=filtered)
 
 @app.route('/download/<filename>')
 def download(filename):
     token = request.args.get('token')
+    if not token: return "Acceso no autorizado", 403
 
-    # Si no hay token, bloquear
-    if not token:
-        return "Acceso no autorizado", 403
-
-    # 1. Crear conexión y cursor con BUFFER (Esto evita el error de tus logs)
     conn = get_db_connection()
-    cursor = conn.cursor(buffered=True) # El parámetro buffered=True es la clave
-
-    try:
-        # Buscar token del archivo
+    with conn.cursor() as cursor:
         cursor.execute("SELECT token FROM archivos WHERE nombre=%s", (filename,))
         result = cursor.fetchone()
+        
+    conn.close()
+    if not result or token != result[0]:
+        return "Token inválido o archivo no encontrado", 403
 
-        if not result:
-            return "Archivo no encontrado en la base de datos", 404
+    filepath = os.path.abspath(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+    return send_file(filepath, as_attachment=True)
 
-        stored_token = result[0]
+@app.route('/logout')
+def logout():
+    session.clear()
+    return redirect(url_for('login'))
 
-        # Verificar token
-        if token != stored_token:
-            return "Token inválido", 403
-
-        # 2. Usar ruta absoluta para evitar FileNotFoundError en Render
-        filepath = os.path.abspath(os.path.join(app.config['UPLOAD_FOLDER'], filename))
-
-        if not os.path.exists(filepath):
-            return "El archivo físico no existe en el servidor", 404
-
-        return send_file(filepath, as_attachment=True)
-
-    except Exception as e:
-        print(f"Error: {e}")
-        return "Error interno del servidor", 500
-    finally:
-        # 3. Siempre cerrar cursor y conexión
-        cursor.close()
-        conn.close()
-    
-import os
-port = int(os.environ.get("PORT", 10000))
-app.run(host='0.0.0.0', port=port)
+if __name__ == '__main__':
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host='0.0.0.0', port=port)
