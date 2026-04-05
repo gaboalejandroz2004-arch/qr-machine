@@ -1,6 +1,7 @@
 import os
 import qrcode
-import mysql.connector
+import psycopg2
+from psycopg2 import extras
 import secrets
 from flask import (Flask, render_template, request, send_file,
                    redirect, url_for, session, flash)
